@@ -1,11 +1,11 @@
-defmodule Ledger.Accounts.CustomerAccountTest do
+defmodule Accounts.CustomerAccountTest do
   use ExUnit.Case, async: true
 
-  alias Ledger.Accounts.Commands.ActivateCustomerAccount
-  alias Ledger.Accounts.Commands.OpenCustomerAccount
-  alias Ledger.Accounts.CustomerAccount
-  alias Ledger.Accounts.Events.CustomerAccountActivated
-  alias Ledger.Accounts.Events.CustomerAccountOpened
+  alias Accounts.Commands.ActivateCustomerAccount
+  alias Accounts.Commands.OpenCustomerAccount
+  alias Accounts.CustomerAccount
+  alias Accounts.Events.CustomerAccountActivated
+  alias Accounts.Events.CustomerAccountOpened
 
   describe "OpenCustomerAccount" do
     test "emits CustomerAccountOpened for a new account" do

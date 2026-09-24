@@ -1,12 +1,12 @@
-defmodule Ledger.Accounts.CustomerAccount do
+defmodule Accounts.CustomerAccount do
   @moduledoc """
   Aggregate guarding a customer account's lifecycle, modeled as an FSM.
   """
 
-  alias Ledger.Accounts.Commands.ActivateCustomerAccount
-  alias Ledger.Accounts.Commands.OpenCustomerAccount
-  alias Ledger.Accounts.Events.CustomerAccountActivated
-  alias Ledger.Accounts.Events.CustomerAccountOpened
+  alias Accounts.Commands.ActivateCustomerAccount
+  alias Accounts.Commands.OpenCustomerAccount
+  alias Accounts.Events.CustomerAccountActivated
+  alias Accounts.Events.CustomerAccountOpened
 
   defstruct [:account_id, :status]
 

@@ -1,4 +1,4 @@
-defmodule Ledger.Accounts.Events.CustomerAccountOpened do
+defmodule Accounts.Events.CustomerAccountOpened do
   @moduledoc """
   A customer account was opened.
   """

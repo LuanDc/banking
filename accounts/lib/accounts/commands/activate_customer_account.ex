@@ -1,4 +1,4 @@
-defmodule Ledger.Accounts.Commands.ActivateCustomerAccount do
+defmodule Accounts.Commands.ActivateCustomerAccount do
   @moduledoc """
   Intent to activate a customer account once KYC is approved.
   """
