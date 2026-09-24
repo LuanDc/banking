@@ -9,6 +9,7 @@ defmodule Accounts.CustomerAccount do
   alias Accounts.Events.CustomerAccountActivated
   alias Accounts.Events.CustomerAccountBlocked
   alias Accounts.Events.CustomerAccountOpened
+  alias Accounts.StateMachine
 
   defstruct [:account_id, :status]
 
@@ -18,17 +19,17 @@ defmodule Accounts.CustomerAccount do
 
   def execute(%__MODULE__{}, %OpenCustomerAccount{}), do: {:error, :account_already_exists}
 
-  def execute(%__MODULE__{status: :pending_kyc}, %ActivateCustomerAccount{} = command) do
-    %CustomerAccountActivated{account_id: command.account_id}
+  def execute(%__MODULE__{status: status}, %ActivateCustomerAccount{} = command) do
+    with :ok <- StateMachine.transition(status, :active) do
+      %CustomerAccountActivated{account_id: command.account_id}
+    end
   end
 
-  def execute(%__MODULE__{}, %ActivateCustomerAccount{}), do: {:error, :invalid_transition}
-
-  def execute(%__MODULE__{status: :active}, %BlockCustomerAccount{} = command) do
-    %CustomerAccountBlocked{account_id: command.account_id, reason: command.reason}
+  def execute(%__MODULE__{status: status}, %BlockCustomerAccount{} = command) do
+    with :ok <- StateMachine.transition(status, :blocked) do
+      %CustomerAccountBlocked{account_id: command.account_id, reason: command.reason}
+    end
   end
-
-  def execute(%__MODULE__{}, %BlockCustomerAccount{}), do: {:error, :invalid_transition}
 
   def apply(%__MODULE__{} = account, %CustomerAccountOpened{} = event) do
     %__MODULE__{account | account_id: event.account_id, status: :pending_kyc}
