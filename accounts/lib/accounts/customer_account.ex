@@ -9,9 +9,11 @@ defmodule Accounts.CustomerAccount do
   alias Accounts.Commands.ConfirmReservation
   alias Accounts.Commands.FreezeCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
+  alias Accounts.Commands.ReleaseBalance
   alias Accounts.Commands.ReserveBalance
   alias Accounts.Commands.UnblockCustomerAccount
   alias Accounts.Commands.UnfreezeCustomerAccount
+  alias Accounts.Events.BalanceReleased
   alias Accounts.Events.BalanceReservationRejected
   alias Accounts.Events.BalanceReserved
   alias Accounts.Events.CustomerAccountActivated
@@ -115,6 +117,19 @@ defmodule Accounts.CustomerAccount do
     }
   end
 
+  # README, D4: a redelivered release for a closed reservation gives nothing back twice.
+  def execute(%__MODULE__{reservations: reservations}, %ReleaseBalance{correlation_id: id})
+      when not is_map_key(reservations, id),
+      do: []
+
+  def execute(%__MODULE__{} = account, %ReleaseBalance{} = command) do
+    %BalanceReleased{
+      account_id: command.account_id,
+      correlation_id: command.correlation_id,
+      amount: Map.fetch!(account.reservations, command.correlation_id)
+    }
+  end
+
   def apply(%__MODULE__{} = account, %CustomerAccountOpened{} = event) do
     %__MODULE__{account | account_id: event.account_id, status: :pending_kyc}
   end
@@ -155,6 +170,14 @@ defmodule Accounts.CustomerAccount do
 
   def apply(%__MODULE__{} = account, %ReservationConfirmed{} = event) do
     %__MODULE__{account | reservations: Map.delete(account.reservations, event.correlation_id)}
+  end
+
+  def apply(%__MODULE__{} = account, %BalanceReleased{} = event) do
+    %__MODULE__{
+      account
+      | available_balance: account.available_balance + event.amount,
+        reservations: Map.delete(account.reservations, event.correlation_id)
+    }
   end
 
   # README, section 3.1: only an ACTIVE account may send money.

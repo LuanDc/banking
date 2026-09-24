@@ -7,10 +7,12 @@ defmodule Accounts.CustomerAccountTest do
   alias Accounts.Commands.ConfirmReservation
   alias Accounts.Commands.FreezeCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
+  alias Accounts.Commands.ReleaseBalance
   alias Accounts.Commands.ReserveBalance
   alias Accounts.Commands.UnblockCustomerAccount
   alias Accounts.Commands.UnfreezeCustomerAccount
   alias Accounts.CustomerAccount
+  alias Accounts.Events.BalanceReleased
   alias Accounts.Events.BalanceReservationRejected
   alias Accounts.Events.BalanceReserved
   alias Accounts.Events.CustomerAccountActivated
@@ -236,6 +238,21 @@ defmodule Accounts.CustomerAccountTest do
     end
   end
 
+  describe "ReleaseBalance" do
+    test "emits BalanceReleased for an open reservation" do
+      command = %ReleaseBalance{account_id: "acc-1", correlation_id: "corr-1"}
+
+      assert %BalanceReleased{account_id: "acc-1", correlation_id: "corr-1", amount: 400} =
+               CustomerAccount.execute(with_reservation(), command)
+    end
+
+    test "ignores a reservation that is not open, e.g. one already released" do
+      command = %ReleaseBalance{account_id: "acc-1", correlation_id: "corr-9"}
+
+      assert [] = CustomerAccount.execute(with_reservation(), command)
+    end
+  end
+
   describe "applying CustomerAccountOpened" do
     test "moves the account to pending KYC" do
       event = %CustomerAccountOpened{account_id: "acc-1", customer_id: "cus-1"}
@@ -341,6 +358,17 @@ defmodule Accounts.CustomerAccountTest do
       event = %ReservationConfirmed{account_id: "acc-1", correlation_id: "corr-1", amount: 400}
 
       assert %CustomerAccount{available_balance: 600, reservations: reservations} =
+               CustomerAccount.apply(with_reservation(), event)
+
+      assert reservations == %{}
+    end
+  end
+
+  describe "applying BalanceReleased" do
+    test "gives the reserved amount back to the available balance" do
+      event = %BalanceReleased{account_id: "acc-1", correlation_id: "corr-1", amount: 400}
+
+      assert %CustomerAccount{available_balance: 1_000, reservations: reservations} =
                CustomerAccount.apply(with_reservation(), event)
 
       assert reservations == %{}
