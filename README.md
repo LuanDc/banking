@@ -178,11 +178,16 @@ The specification's matrix, translated into the aggregate's guard rules:
 
 ## 4. Process Level — `Ledger Context`
 
-Scope: immutable double-entry ledger.
+Scope: immutable double-entry ledger. `Ledger` knows no other context: it takes commands and
+publishes its own events (D3, D5).
 
 ```mermaid
 flowchart TB
-    P1["Policy: LedgerRouter<br/>on BalanceReserved,<br/>translate into D/C entries"]:::pol
+    P1["Accounts · LedgerRouter<br/>sends BookTransactionBatch<br/>as a command (D3)"]:::pol
+    P0["Accounts · on CustomerAccountOpened / Closed,<br/>sends Open / CloseLedgerAccount (D5)"]:::pol
+
+    C0["OpenLedgerAccount ⊕ · CloseLedgerAccount ⊕"]:::cmd
+    AGG0["LedgerAccount ⊕<br/>OPEN · CLOSED"]:::agg
 
     C1["BookTransactionBatch ⊕<br/>batch_id, correlation_id, entries"]:::cmd
 
@@ -198,8 +203,8 @@ flowchart TB
     RM2["StatementView · account statement ⊕"]:::rm
     RM3["TrialBalanceView · trial balance ⊕"]:::rm
 
-    H1["🔥 Who owns the chart of accounts?"]:::hot
-
+    P0 --> C0
+    C0 --> AGG0
     P1 --> C1
     C1 --> AGG
     AGG --> E1
@@ -209,14 +214,13 @@ flowchart TB
     P2 --> RM1
     E1 --> RM2
     E1 --> RM3
-    AGG -.- H1
+    AGG0 -.->|"entries only to OPEN accounts"| AGG
 
     classDef evt fill:#FFA726,stroke:#C66900,color:#14202B
     classDef cmd fill:#64B5F6,stroke:#1565C0,color:#14202B
     classDef agg fill:#FFE082,stroke:#C8A300,color:#14202B
     classDef pol fill:#CE93D8,stroke:#7B1FA2,color:#14202B
     classDef rm fill:#A5D6A7,stroke:#2E7D32,color:#14202B
-    classDef hot fill:#EF9A9A,stroke:#B71C1C,color:#14202B
 ```
 
 ### 4.1 The critical invariant
@@ -233,7 +237,9 @@ An unbalanced batch is never persisted as a success event — it becomes
 
 ## 5. Design Level — end-to-end `TransferMoney` flow
 
-Detail of the flow in section 5 of the specification, including the failure path.
+Detail of the flow in section 5 of the specification, including the failure path, as refined by
+D3 and D5: the saga lives in `Account Management`, the destination account authorizes the credit,
+and `Ledger` only receives a command.
 
 ```mermaid
 flowchart TB
@@ -249,9 +255,14 @@ flowchart TB
         EVX["BalanceReleased ⊕"]:::evt
         CY["ConfirmReservation ⊕"]:::cmd
         EVY["ReservationConfirmed ⊕"]:::evt
+        POL["🟪 LedgerRouter<br/>process manager per correlation_id"]:::pol
+        CZ["AuthorizeCredit ⊕"]:::cmd
+        AGG3["Destination CustomerAccount<br/>guard: matrix allows credit"]:::agg
+        EVA["CreditAuthorized ⊕"]:::evt
+        EVR["CreditRejected ⊕"]:::evt
+        POLOK["🟪 on LedgerBatchBooked,<br/>confirm the reservation ⊕"]:::pol
+        POLKO["🟪 on a rejection,<br/>release the reservation ⊕"]:::pol
     end
-
-    POL["🟪 LedgerRouter<br/>process manager per correlation_id"]:::pol
 
     subgraph LG["Ledger Context"]
         direction TB
@@ -267,24 +278,27 @@ flowchart TB
         RM2["StatementView ⊕"]:::rm
     end
 
-    POLOK["🟪 on LedgerBatchBooked,<br/>confirm the reservation ⊕"]:::pol
-    POLKO["🟪 on LedgerBatchRejected,<br/>release the reservation ⊕"]:::pol
-
     A --> C0
     C0 --> AGG1
     AGG1 -->|"happy path"| EV1
     AGG1 -->|"FSM guard fails"| EV2
-    EV1 -->|"asynchronous PubSub"| POL
-    POL --> CB
+    EV1 --> POL
+    POL --> CZ
+    CZ --> AGG3
+    AGG3 -->|"ACTIVE / BLOCKED"| EVA
+    AGG3 -->|"PENDING_KYC / FROZEN / CLOSED"| EVR
+    EVA --> POL
+    EVR --> POLKO
+    POL -->|"command · RabbitMQ"| CB
     CB --> AGG2
     AGG2 -->|"D = C"| EV3
     AGG2 -->|"D ≠ C or invalid account"| EV4
     EV3 --> RM1
     EV3 --> RM2
-    EV3 --> POLOK
+    EV3 -->|"event · RabbitMQ"| POLOK
     POLOK --> CY
     CY --> EVY
-    EV4 --> POLKO
+    EV4 -->|"event · RabbitMQ"| POLKO
     POLKO --> CX
     CX --> EVX
 
@@ -302,27 +316,34 @@ flowchart TB
 sequenceDiagram
     autonumber
     actor Customer
-    participant CA as CustomerAccount (FSM)
-    participant PS as PubSub / Event Store
-    participant LR as LedgerRouter (policy)
-    participant TB as TransactionBatch
+    participant CA as Source CustomerAccount
+    participant LR as LedgerRouter (Accounts)
+    participant DA as Destination CustomerAccount
+    participant MQ as RabbitMQ
+    participant TB as TransactionBatch (Ledger)
     participant PJ as BalanceView (Postgres)
 
     Customer->>CA: TransferMoney
     CA->>CA: validate ACTIVE state + balance
-    CA-->>PS: BalanceReserved (correlation_id)
-    PS-->>LR: asynchronous delivery
-    LR->>TB: BookTransactionBatch (DEBIT / CREDIT)
+    CA-->>LR: BalanceReserved (correlation_id)
+    LR->>DA: AuthorizeCredit
 
-    alt balanced batch
-        TB->>TB: sum DEBIT = sum CREDIT
-        TB-->>PS: LedgerBatchBooked
-        PS-->>PJ: project the new balance
-        PS-->>CA: ConfirmReservation
-    else invalid batch
-        TB-->>PS: LedgerBatchRejected
-        PS-->>CA: ReleaseBalance (compensation)
-        CA-->>PS: BalanceReleased
+    alt credit allowed (ACTIVE / BLOCKED)
+        DA-->>LR: CreditAuthorized
+        LR->>MQ: BookTransactionBatch (command)
+        MQ->>TB: deliver (at-least-once)
+        alt balanced batch
+            TB->>TB: sum DEBIT = sum CREDIT
+            TB-->>MQ: LedgerBatchBooked (event)
+            TB-->>PJ: project the new balance
+            MQ-->>CA: ConfirmReservation
+        else invalid batch
+            TB-->>MQ: LedgerBatchRejected (event)
+            MQ-->>CA: ReleaseBalance (compensation)
+        end
+    else credit not allowed (FROZEN / CLOSED)
+        DA-->>LR: CreditRejected
+        LR->>CA: ReleaseBalance (compensation)
     end
 ```
 
@@ -342,8 +363,8 @@ flowchart LR
     KYC["KYC Provider ⊕"]:::ext
     SPB["Payment scheme · PIX/SPB ⊕"]:::ext
 
-    AM -->|"Publisher / Subscriber<br/>BalanceReserved"| LG
-    LG -->|"LedgerBatchBooked ·<br/>LedgerBatchRejected"| AM
+    AM -->|"commands<br/>OpenLedgerAccount · CloseLedgerAccount ·<br/>BookTransactionBatch"| LG
+    LG -->|"events<br/>LedgerBatchBooked ·<br/>LedgerBatchRejected"| AM
     AM --> PJ
     LG --> PJ
     KYC -.->|"Anticorruption Layer"| AM
@@ -354,9 +375,10 @@ flowchart LR
     classDef ext fill:#F48FB1,stroke:#AD1457,color:#14202B
 ```
 
-`Account Management` and `Ledger` relate to each other through **published domain events**, with no
-synchronous call and no shared database. Neither context knows the other's internal schema: the
-contract is the event payload.
+`Account Management` and `Ledger` relate to each other through **asynchronous messages**, with no
+synchronous call and no shared database. `Ledger` is an **Open Host Service**: it publishes a
+command contract and its own events, and knows nothing of `Account Management`, which conforms to
+that contract. The dependency runs one way only (D3, D5).
 
 ---
 
@@ -376,18 +398,24 @@ contract is the event payload.
 | `ReserveBalance` ⊕ | `CustomerAccount` | `BalanceReserved` | `BalanceReservationRejected` ⊕ | `ACTIVE` + available balance |
 | `ConfirmReservation` ⊕ | `CustomerAccount` | `ReservationConfirmed` ⊕ | — | reservation exists |
 | `ReleaseBalance` ⊕ | `CustomerAccount` | `BalanceReleased` ⊕ | — | reservation exists |
+| `AuthorizeCredit` ⊕ | `CustomerAccount` | `CreditAuthorized` ⊕ | `CreditRejected` ⊕ | matrix allows credit: `ACTIVE`, `BLOCKED` (D5) |
 
 ### Ledger
 
 | Command | Aggregate | Success event | Rejection event | Invariant |
 | --- | --- | --- | --- | --- |
-| `BookTransactionBatch` ⊕ | `TransactionBatch` | `LedgerBatchBooked` | `LedgerBatchRejected` ⊕ | sum DEBIT = sum CREDIT |
+| `BookTransactionBatch` ⊕ | `TransactionBatch` | `LedgerBatchBooked` | `LedgerBatchRejected` ⊕ | sum DEBIT = sum CREDIT, entries only to `OPEN` ledger accounts |
+| `OpenLedgerAccount` ⊕ | `LedgerAccount` ⊕ | `LedgerAccountOpened` ⊕ | account already exists | — |
+| `CloseLedgerAccount` ⊕ | `LedgerAccount` ⊕ | `LedgerAccountClosed` ⊕ | rejected | state = `OPEN` |
 
 ### Policies
 
 | Trigger | Policy | Command issued |
 | --- | --- | --- |
-| `BalanceReserved` | `LedgerRouter` | `BookTransactionBatch` ⊕ |
+| `BalanceReserved` | `LedgerRouter` (Accounts) | `AuthorizeCredit` ⊕ on the destination account |
+| `CreditAuthorized` ⊕ | `LedgerRouter` (Accounts) | `BookTransactionBatch` ⊕, sent to `Ledger` |
+| `CreditRejected` ⊕ | saga compensation ⊕ | `ReleaseBalance` ⊕ |
+| `CustomerAccountOpened` / `Closed` | chart of accounts ⊕ (Accounts) | `OpenLedgerAccount` / `CloseLedgerAccount` ⊕, sent to `Ledger` |
 | `LedgerBatchBooked` | saga confirmation ⊕ | `ConfirmReservation` ⊕ |
 | `LedgerBatchRejected` | saga compensation ⊕ | `ReleaseBalance` ⊕ |
 | KYC approved | account activation ⊕ | `ActivateCustomerAccount` ⊕ |
@@ -410,8 +438,8 @@ Red sticky notes raised during modeling. Each one is worth an invariant test onc
 
 | # | Hotspot | Why it matters |
 | --- | --- | --- |
-| H1 | **Owner of the chart of accounts.** Does `Ledger` know the customer's accounting accounts, or does it receive the identifiers in the event payload? | Determines whether `CustomerAccountOpened` has to trigger the creation of accounting accounts. |
-| H2 | **Credit into a `BLOCKED` account.** The matrix allows inbound money, but credits don't go through a reservation. Who authorizes the entry? | If `Ledger` doesn't check the status, `BLOCKED` is only enforced on debits. |
+| H1 | **Owner of the chart of accounts.** Does `Ledger` know the customer's accounting accounts, or does it receive the identifiers in the event payload? | Determines whether `CustomerAccountOpened` has to trigger the creation of accounting accounts. **Resolved → D5.** |
+| H2 | **Credit into a `BLOCKED` account.** The matrix allows inbound money, but credits don't go through a reservation. Who authorizes the entry? | If `Ledger` doesn't check the status, `BLOCKED` is only enforced on debits. **Resolved → D5.** |
 | H3 | **Reservation timeout.** Does a `BalanceReserved` with no matching `LedgerBatchBooked` stay pending forever? | Without expiry, available balance leaks. Calls for a scheduler or a `ReservationExpired` event. |
 | H4 | **Idempotency.** Is `correlation_id` the deduplication key in `Ledger`? | A PubSub redelivery could book the same batch twice. **Resolved → D4.** |
 | H5 | **Freezing with an open reservation.** `FreezeCustomerAccount` during an in-flight saga: abort it or let it finish? | Affects the guards on `ConfirmReservation`. |
@@ -435,22 +463,23 @@ accounts/                          # Account Management Context
     ├── customer_account.ex        # 🟨 aggregate: FSM, transition matrix (section 3.1) and guards
     ├── commands/                  # 🟦 commands (section 7)
     ├── events/                    # 🟧 events (section 7)
-    ├── process_managers/          # 🟪 reservation confirmation and compensation (section 5)
+    ├── process_managers/
+    │   └── ledger_router.ex       # 🟪 transfer saga: credit authorization, booking, compensation
     └── projections/               # 🟩 AccountStatusView, ReservationsView
 
 ledger/                            # Ledger Context
 └── lib/ledger/
     ├── transaction_batch.ex       # 🟨 aggregate: D = C invariant (section 4.1)
+    ├── ledger_account.ex          # 🟨 aggregate: OPEN · CLOSED (D5)
     ├── ledger_entry.ex            # DEBIT/CREDIT value object
     ├── commands/ · events/        # 🟦 🟧
-    ├── process_managers/
-    │   └── ledger_router.ex       # 🟪 BalanceReserved → BookTransactionBatch (section 5)
     └── projections/               # 🟩 BalanceView, StatementView, TrialBalanceView
 ```
 
 Each service has the same setup: Phoenix API, Ecto for the read models, Commanded with a
 Postgres event store in its own database (`<App>.App`, `<App>.EventStore`), and the `mix quality`
-gate. Only `CustomerAccount` exists so far; the rest of the tree is where each piece goes.
+gate. `CustomerAccount` and `TransactionBatch` exist so far; the rest of the tree is where each
+piece goes.
 
 **An aggregate's rules live in the aggregate.** The FSM guards are a module attribute of
 `CustomerAccount`, next to the commands they guard, rather than a separate `state_machine.ex`, so
@@ -459,9 +488,10 @@ command may run from, as in the Guard column of section 7 — not by target stat
 `Unblock` both lead to `ACTIVE`, but from different statuses.
 
 **Suggested implementation order:** the `CustomerAccount` FSM → the `TransactionBatch` double-entry
-invariant → available balance and `ReserveBalance` in `CustomerAccount` → event transport (D3) and
-`LedgerRouter` wiring the two together → projections → the compensation paths. Every step before the
-transport is pure aggregate work, testable without any infrastructure.
+invariant → available balance and `ReserveBalance` in `CustomerAccount` → `AuthorizeCredit` and the
+`LedgerAccount` lifecycle (D5) → message transport (D3) and the `LedgerRouter` saga wiring the two
+together → projections. Every step before the transport is pure aggregate work, testable without
+any infrastructure.
 The specification's priority tests are exactly hotspots H2, H3 and H5, plus the mathematical
 validation from section 4.1.
 
@@ -495,14 +525,24 @@ Money enters an account the way it does in a real bank: a batch in `Ledger` debi
 account (e.g. the bank's PIX account) and credits the customer, and `Accounts` learns about it
 from `LedgerBatchBooked`.
 
-### D3 · Events cross services through RabbitMQ, with the event store as the outbox
+### D3 · Messages cross services through RabbitMQ, with the event store as the outbox
 
-- In each service, a Commanded event handler with a durable subscription reads its own event
-  store and publishes only the **integration events** — the public contract of section 6:
-  `BalanceReserved`, `LedgerBatchBooked`, `LedgerBatchRejected` — to a RabbitMQ exchange.
-- On the other side, a Broadway consumer turns each message into a command.
-- If publishing fails, the subscription does not advance and the event is sent again: the event
-  store already is the outbox, and delivery is **at-least-once**.
+`Ledger` knows no other context, so the two directions carry different kinds of message:
+
+| Direction | Message | RabbitMQ | Contract |
+| --- | --- | --- | --- |
+| Accounts → Ledger | **commands**: `OpenLedgerAccount`, `CloseLedgerAccount`, `BookTransactionBatch` | a queue owned by `Ledger` (point to point) | defined by `Ledger` |
+| Ledger → Accounts | **events**: `LedgerBatchBooked`, `LedgerBatchRejected` | a topic exchange (publish/subscribe) | defined by `Ledger` |
+
+- In `Accounts`, the `LedgerRouter` and the other policies are Commanded event handlers with a
+  durable subscription on its own event store. They turn its facts into `Ledger` commands and
+  publish them. If publishing fails, the subscription does not advance and the message is sent
+  again: the event store already is the outbox, and delivery is **at-least-once**.
+- In `Ledger`, a handler publishes its own events the same way.
+- On each side, a Broadway consumer is only an adapter: message → command → dispatch. It holds no
+  business rule.
+- Only cross-context requests become commands. Domain events stay internal unless another context
+  needs them, and then they are published as events.
 
 Rejected: subscribing to the other service's event store (a shared database), distributed
 Phoenix.PubSub (not durable, hides the failures this lab is about), Kafka (too heavy here).
@@ -510,5 +550,30 @@ Phoenix.PubSub (not durable, hides the failures this lab is about), Kafka (too h
 ### D4 · Consumers deduplicate by `correlation_id`
 
 At-least-once delivery means every message may arrive twice. The consuming side uses the
-`correlation_id` as the deduplication key, so a redelivered `BalanceReserved` cannot book the
-same batch twice, and a redelivered `LedgerBatchBooked` cannot credit an account twice.
+`correlation_id` as the deduplication key: the `LedgerRouter` derives the `batch_id` from it, so a
+redelivered `BookTransactionBatch` hits a batch already decided and books nothing, and a redelivered
+`LedgerBatchBooked` or `LedgerBatchRejected` finds the reservation already settled or released.
+
+### D5 · Business rules live in Accounts; Ledger accounts only open and close
+
+- **Account status and every rule tied to it** — the FSM, the debit/credit matrix, the available
+  balance and reservations — belong to `CustomerAccount`.
+- **`Ledger` owns the chart of accounts** (resolves H1). A `LedgerAccount` has a minimal lifecycle,
+  `OPEN` and `CLOSED`, and `Ledger` enforces a single integrity rule: no entry into an account that
+  is not open. `Accounts` opens and closes the ledger account of each customer account, 1:1, by
+  sending `OpenLedgerAccount` / `CloseLedgerAccount`; the bank's internal accounts (e.g. the PIX
+  settlement account of D2) are opened directly in `Ledger`.
+- **Credits are authorized by the destination account** (resolves H2). Before booking, the
+  `LedgerRouter` sends `AuthorizeCredit` to the destination `CustomerAccount`, which applies the
+  matrix: `ACTIVE` and `BLOCKED` accept credit, anything else emits `CreditRejected` and the saga
+  releases the reservation. Debit and credit are then symmetric: each account that moves money is
+  asked through its own aggregate.
+- The "open ledger account" check runs in `Ledger`'s dispatch pipeline, against a projection of
+  open ledger accounts, before the command reaches `TransactionBatch`, which stays a pure function
+  of its entries.
+
+Rejected: keeping status in `Ledger` and projecting it into `Accounts`. Status is a fact about the
+customer relationship (fraud, court orders, KYC); in a shared ledger account it would spread one
+customer's freeze to others, and `ReserveBalance` would authorize debits on an asynchronous copy of
+the status. The realistic "many people, one balance" case is a joint account: one
+`CustomerAccount` with many holders, still 1:1 with its ledger account.
