@@ -10,6 +10,15 @@ config :ledger, Ledger.Repo,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
 
+# The event store keeps its own database, separate from the read models.
+config :ledger, Ledger.EventStore,
+  serializer: EventStore.JsonSerializer,
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  database: "ledger_eventstore_dev",
+  pool_size: 10
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

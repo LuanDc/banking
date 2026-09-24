@@ -9,7 +9,16 @@ import Config
 
 config :ledger,
   ecto_repos: [Ledger.Repo],
+  event_stores: [Ledger.EventStore],
   generators: [timestamp_type: :utc_datetime, binary_id: true]
+
+# Commanded dispatches commands through Ledger.App, which reads and appends
+# events with Ledger.EventStore.
+config :ledger, Ledger.App,
+  event_store: [
+    adapter: Commanded.EventStore.Adapters.EventStore,
+    event_store: Ledger.EventStore
+  ]
 
 # Configures the endpoint
 config :ledger, LedgerWeb.Endpoint,

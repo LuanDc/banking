@@ -12,6 +12,7 @@ defmodule Ledger.Application do
       Ledger.Repo,
       {DNSCluster, query: Application.get_env(:ledger, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Ledger.PubSub},
+      Ledger.App,
       # Start a worker by calling: Ledger.Worker.start_link(arg)
       # {Ledger.Worker, arg},
       # Start to serve requests, typically the last entry
