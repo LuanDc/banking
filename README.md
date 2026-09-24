@@ -261,7 +261,7 @@ flowchart TB
         EVA["CreditAuthorized ⊕"]:::evt
         EVR["CreditRejected ⊕"]:::evt
         POLOK["🟪 on LedgerBatchBooked,<br/>confirm the reservation ⊕"]:::pol
-        POLKO["🟪 on a rejection,<br/>release the reservation ⊕"]:::pol
+        POLKO["🟪 on a rejection, release the reservation<br/>and cancel the pending credit ⊕"]:::pol
     end
 
     subgraph LG["Ledger Context"]
@@ -340,6 +340,7 @@ sequenceDiagram
         else invalid batch
             TB-->>MQ: LedgerBatchRejected (event)
             MQ-->>CA: ReleaseBalance (compensation)
+            MQ-->>DA: CancelCredit
         end
     else credit not allowed (FROZEN / CLOSED)
         DA-->>LR: CreditRejected
@@ -394,12 +395,13 @@ that contract. The dependency runs one way only (D3, D5).
 | `UnblockCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountUnblocked` | rejected | state = `BLOCKED` |
 | `FreezeCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountFrozen` ⊕ | rejected | state = `ACTIVE` |
 | `UnfreezeCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountUnfrozen` ⊕ | rejected | state = `FROZEN` |
-| `CloseCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountClosed` ⊕ | rejected | state ∈ {`ACTIVE`, `BLOCKED`} |
+| `CloseCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountClosed` ⊕ | rejected | state ∈ {`ACTIVE`, `BLOCKED`}, zero available balance, no open reservation, no pending credit (D8) |
 | `ReserveBalance` ⊕ | `CustomerAccount` | `BalanceReserved` | `BalanceReservationRejected` ⊕ | `ACTIVE` + available balance |
 | `ConfirmReservation` ⊕ | `CustomerAccount` | `ReservationConfirmed` ⊕ | — | reservation exists |
 | `ReleaseBalance` ⊕ | `CustomerAccount` | `BalanceReleased` ⊕ | — | reservation exists |
 | `AuthorizeCredit` ⊕ | `CustomerAccount` | `CreditAuthorized` ⊕ | `CreditRejected` ⊕ | matrix allows credit: `ACTIVE`, `BLOCKED` (D5) |
 | `PostCredit` ⊕ | `CustomerAccount` | `CreditPosted` ⊕ | — (a posted `correlation_id` is ignored, D4) | none: mirrors a credit the Ledger booked (D2) |
+| `CancelCredit` ⊕ | `CustomerAccount` | `CreditCancelled` ⊕ | — (an unknown `correlation_id` is ignored, D4) | pending credit exists |
 
 ### Ledger
 
@@ -419,7 +421,7 @@ that contract. The dependency runs one way only (D3, D5).
 | `CustomerAccountOpened` / `Closed` | chart of accounts ⊕ (Accounts) | `OpenLedgerAccount` / `CloseLedgerAccount` ⊕, sent to `Ledger` |
 | `LedgerBatchBooked` | saga confirmation ⊕ | `ConfirmReservation` ⊕ on the source account |
 | `LedgerBatchBooked` | credit posting ⊕ | `PostCredit` ⊕ on each credited customer account |
-| `LedgerBatchRejected` | saga compensation ⊕ | `ReleaseBalance` ⊕ |
+| `LedgerBatchRejected` | saga compensation ⊕ | `ReleaseBalance` ⊕ on the source, `CancelCredit` ⊕ on the destination |
 | KYC approved | account activation ⊕ | `ActivateCustomerAccount` ⊕ |
 
 ### Read models
@@ -442,11 +444,11 @@ Red sticky notes raised during modeling. Each one is worth an invariant test onc
 | --- | --- | --- |
 | H1 | **Owner of the chart of accounts.** Does `Ledger` know the customer's accounting accounts, or does it receive the identifiers in the event payload? | Determines whether `CustomerAccountOpened` has to trigger the creation of accounting accounts. **Resolved → D5.** |
 | H2 | **Credit into a `BLOCKED` account.** The matrix allows inbound money, but credits don't go through a reservation. Who authorizes the entry? | If `Ledger` doesn't check the status, `BLOCKED` is only enforced on debits. **Resolved → D5.** |
-| H3 | **Reservation timeout.** Does a `BalanceReserved` with no matching `LedgerBatchBooked` stay pending forever? | Without expiry, available balance leaks. Calls for a scheduler or a `ReservationExpired` event. |
+| H3 | **Reservation timeout.** Does a `BalanceReserved` with no matching `LedgerBatchBooked` stay pending forever? | Without expiry, available balance leaks. Calls for a scheduler or a `ReservationExpired` event. **Resolved → D6.** |
 | H4 | **Idempotency.** Is `correlation_id` the deduplication key in `Ledger`? | A PubSub redelivery could book the same batch twice. **Resolved → D4.** |
-| H5 | **Freezing with an open reservation.** `FreezeCustomerAccount` during an in-flight saga: abort it or let it finish? | Affects the guards on `ConfirmReservation`. |
-| H6 | **Residual balance at closure.** Does `CloseCustomerAccount` require a zero balance, or does it generate a transfer entry? | A terminal state holding a balance breaks reconciliation. |
-| H7 | **Reversals.** An accounting batch is immutable — is a reversal a new, inverted batch? | Determines whether `LedgerBatchReversed` exists. |
+| H5 | **Freezing with an open reservation.** `FreezeCustomerAccount` during an in-flight saga: abort it or let it finish? | Affects the guards on `ConfirmReservation`. **Resolved → D7.** |
+| H6 | **Residual balance at closure.** Does `CloseCustomerAccount` require a zero balance, or does it generate a transfer entry? | A terminal state holding a balance breaks reconciliation. **Resolved → D8.** |
+| H7 | **Reversals.** An accounting batch is immutable — is a reversal a new, inverted batch? | Determines whether `LedgerBatchReversed` exists. **Model decided, implementation deferred → D9.** |
 | H8 | **Projection failure.** `LedgerBatchBooked` written but `BalanceView` stale. | Needs projection replay and lag monitoring. |
 | H9 | **Event transport between services.** `accounts` and `ledger` have separate event stores, so Commanded's PubSub does not carry `BalanceReserved` or `LedgerBatchBooked` across. Broker, outbox, or a subscription to the other event store? | Nothing crosses the Context Map until this is decided — it blocks `LedgerRouter` and the saga in section 5. **Resolved → D3.** |
 
@@ -579,3 +581,43 @@ customer relationship (fraud, court orders, KYC); in a shared ledger account it 
 customer's freeze to others, and `ReserveBalance` would authorize debits on an asynchronous copy of
 the status. The realistic "many people, one balance" case is a joint account: one
 `CustomerAccount` with many holders, still 1:1 with its ledger account.
+
+### D6 · Reservations do not expire (H3)
+
+A reservation waits for its answer from `Ledger` with no timeout. The outbox and at-least-once
+delivery of D3 guarantee that every `BookTransactionBatch` is eventually answered with
+`LedgerBatchBooked` or `LedgerBatchRejected`, so a reservation that stays open means something is
+broken in the pipeline: an operational alert, not a domain rule.
+
+Rejected: expiring the reservation. If `Ledger` booked the batch after the expiry, the
+confirmation would find no reservation and the available balance would stay higher than the ledger
+balance. Doing it right (card-style late settlement) needs expired reservations in the state and
+one more race; it is not worth it while the pipeline guarantees an answer.
+
+### D7 · Freezing lets a transfer in flight finish (H5)
+
+`FreezeCustomerAccount` blocks new reservations (debit) and new credit authorizations, but what was
+authorized before the freeze finishes: `ConfirmReservation`, `ReleaseBalance`, `PostCredit` and
+`CancelCredit` ignore the status. Aborting would mean undoing a batch `Ledger` may already have
+booked.
+
+### D8 · An account closes only when it is empty (H6)
+
+`CloseCustomerAccount` is rejected while money is in the account or on its way:
+
+| Rejection | Condition |
+| --- | --- |
+| `:balance_not_zero` | available balance above zero |
+| `:open_reservations` | an outbound transfer is in flight |
+| `:pending_credits` | an authorized credit has not been posted yet |
+
+The customer moves the balance out before closing. To know about credits on their way,
+`CreditAuthorized` records a pending credit, which `CreditPosted` settles and `CancelCredit`
+drops when `Ledger` rejects the batch.
+
+### D9 · A reversal is a new, inverted batch (H7) — deferred
+
+A booked batch is never changed. A reversal will be a new `TransactionBatch` with every entry
+inverted and a `reversal_of` field pointing to the original, and a batch can be reversed once.
+Nothing needs it yet — every rejection in the current flow happens before booking — so it is
+implemented when returns (PIX) or corrections appear.
