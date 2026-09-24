@@ -399,6 +399,7 @@ that contract. The dependency runs one way only (D3, D5).
 | `ConfirmReservation` ⊕ | `CustomerAccount` | `ReservationConfirmed` ⊕ | — | reservation exists |
 | `ReleaseBalance` ⊕ | `CustomerAccount` | `BalanceReleased` ⊕ | — | reservation exists |
 | `AuthorizeCredit` ⊕ | `CustomerAccount` | `CreditAuthorized` ⊕ | `CreditRejected` ⊕ | matrix allows credit: `ACTIVE`, `BLOCKED` (D5) |
+| `PostCredit` ⊕ | `CustomerAccount` | `CreditPosted` ⊕ | — (a posted `correlation_id` is ignored, D4) | none: mirrors a credit the Ledger booked (D2) |
 
 ### Ledger
 
@@ -416,7 +417,8 @@ that contract. The dependency runs one way only (D3, D5).
 | `CreditAuthorized` ⊕ | `LedgerRouter` (Accounts) | `BookTransactionBatch` ⊕, sent to `Ledger` |
 | `CreditRejected` ⊕ | saga compensation ⊕ | `ReleaseBalance` ⊕ |
 | `CustomerAccountOpened` / `Closed` | chart of accounts ⊕ (Accounts) | `OpenLedgerAccount` / `CloseLedgerAccount` ⊕, sent to `Ledger` |
-| `LedgerBatchBooked` | saga confirmation ⊕ | `ConfirmReservation` ⊕ |
+| `LedgerBatchBooked` | saga confirmation ⊕ | `ConfirmReservation` ⊕ on the source account |
+| `LedgerBatchBooked` | credit posting ⊕ | `PostCredit` ⊕ on each credited customer account |
 | `LedgerBatchRejected` | saga compensation ⊕ | `ReleaseBalance` ⊕ |
 | KYC approved | account activation ⊕ | `ActivateCustomerAccount` ⊕ |
 
