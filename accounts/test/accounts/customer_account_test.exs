@@ -211,6 +211,12 @@ defmodule Accounts.CustomerAccountTest do
       assert %BalanceReservationRejected{reason: :invalid_amount} =
                reserve(active_account(1_000), 10.5)
     end
+
+    test "ignores a repeated command for a reservation that is already open" do
+      account = %CustomerAccount{active_account(600) | reservations: %{"corr-1" => 400}}
+
+      assert [] = reserve(account, 400)
+    end
   end
 
   describe "applying CustomerAccountOpened" do
@@ -287,6 +293,13 @@ defmodule Accounts.CustomerAccountTest do
       event = %BalanceReserved{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
 
       assert %CustomerAccount{available_balance: 600} =
+               CustomerAccount.apply(active_account(1_000), event)
+    end
+
+    test "records the reservation under its correlation id" do
+      event = %BalanceReserved{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
+
+      assert %CustomerAccount{reservations: %{"corr-1" => 400}} =
                CustomerAccount.apply(active_account(1_000), event)
     end
   end

@@ -21,7 +21,7 @@ defmodule Accounts.CustomerAccount do
   alias Accounts.Events.CustomerAccountUnblocked
   alias Accounts.Events.CustomerAccountUnfrozen
 
-  defstruct [:account_id, :status, available_balance: 0]
+  defstruct [:account_id, :status, available_balance: 0, reservations: %{}]
 
   # Statuses each command may run from (README, sections 3.1 and 7).
   # The status it leads to is set by the event's apply/2.
@@ -76,6 +76,11 @@ defmodule Accounts.CustomerAccount do
     end
   end
 
+  # README, D4: a repeated command for an open reservation reserves nothing.
+  def execute(%__MODULE__{reservations: reservations}, %ReserveBalance{correlation_id: id})
+      when is_map_key(reservations, id),
+      do: []
+
   def execute(%__MODULE__{} = account, %ReserveBalance{} = command) do
     case check_reservation(account, command.amount) do
       :ok ->
@@ -124,7 +129,11 @@ defmodule Accounts.CustomerAccount do
   end
 
   def apply(%__MODULE__{} = account, %BalanceReserved{} = event) do
-    %__MODULE__{account | available_balance: account.available_balance - event.amount}
+    %__MODULE__{
+      account
+      | available_balance: account.available_balance - event.amount,
+        reservations: Map.put(account.reservations, event.correlation_id, event.amount)
+    }
   end
 
   def apply(%__MODULE__{} = account, %BalanceReservationRejected{}), do: account
