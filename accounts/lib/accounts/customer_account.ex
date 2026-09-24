@@ -4,6 +4,7 @@ defmodule Accounts.CustomerAccount do
   """
 
   alias Accounts.Commands.ActivateCustomerAccount
+  alias Accounts.Commands.AuthorizeCredit
   alias Accounts.Commands.BlockCustomerAccount
   alias Accounts.Commands.CloseCustomerAccount
   alias Accounts.Commands.ConfirmReservation
@@ -16,6 +17,8 @@ defmodule Accounts.CustomerAccount do
   alias Accounts.Events.BalanceReleased
   alias Accounts.Events.BalanceReservationRejected
   alias Accounts.Events.BalanceReserved
+  alias Accounts.Events.CreditAuthorized
+  alias Accounts.Events.CreditRejected
   alias Accounts.Events.CustomerAccountActivated
   alias Accounts.Events.CustomerAccountBlocked
   alias Accounts.Events.CustomerAccountClosed
@@ -26,6 +29,10 @@ defmodule Accounts.CustomerAccount do
   alias Accounts.Events.ReservationConfirmed
 
   defstruct [:account_id, :status, available_balance: 0, reservations: %{}]
+
+  # Debit and credit columns of the matrix (README, section 3.1).
+  @can_send [:active]
+  @can_receive [:active, :blocked]
 
   # Statuses each command may run from (README, sections 3.1 and 7).
   # The status it leads to is set by the event's apply/2.
@@ -130,6 +137,25 @@ defmodule Accounts.CustomerAccount do
     }
   end
 
+  def execute(%__MODULE__{} = account, %AuthorizeCredit{} = command) do
+    case check_credit(account, command.amount) do
+      :ok ->
+        %CreditAuthorized{
+          account_id: command.account_id,
+          amount: command.amount,
+          correlation_id: command.correlation_id
+        }
+
+      {:error, reason} ->
+        %CreditRejected{
+          account_id: command.account_id,
+          amount: command.amount,
+          correlation_id: command.correlation_id,
+          reason: reason
+        }
+    end
+  end
+
   def apply(%__MODULE__{} = account, %CustomerAccountOpened{} = event) do
     %__MODULE__{account | account_id: event.account_id, status: :pending_kyc}
   end
@@ -168,6 +194,10 @@ defmodule Accounts.CustomerAccount do
 
   def apply(%__MODULE__{} = account, %BalanceReservationRejected{}), do: account
 
+  def apply(%__MODULE__{} = account, %CreditAuthorized{}), do: account
+
+  def apply(%__MODULE__{} = account, %CreditRejected{}), do: account
+
   def apply(%__MODULE__{} = account, %ReservationConfirmed{} = event) do
     %__MODULE__{account | reservations: Map.delete(account.reservations, event.correlation_id)}
   end
@@ -180,12 +210,19 @@ defmodule Accounts.CustomerAccount do
     }
   end
 
-  # README, section 3.1: only an ACTIVE account may send money.
   defp check_reservation(account, amount) do
     cond do
       not valid_amount?(amount) -> {:error, :invalid_amount}
-      account.status != :active -> {:error, :account_not_active}
+      account.status not in @can_send -> {:error, :account_not_active}
       amount > account.available_balance -> {:error, :insufficient_balance}
+      true -> :ok
+    end
+  end
+
+  defp check_credit(account, amount) do
+    cond do
+      not valid_amount?(amount) -> {:error, :invalid_amount}
+      account.status not in @can_receive -> {:error, :credit_not_allowed}
       true -> :ok
     end
   end

@@ -2,6 +2,7 @@ defmodule Accounts.CustomerAccountTest do
   use ExUnit.Case, async: true
 
   alias Accounts.Commands.ActivateCustomerAccount
+  alias Accounts.Commands.AuthorizeCredit
   alias Accounts.Commands.BlockCustomerAccount
   alias Accounts.Commands.CloseCustomerAccount
   alias Accounts.Commands.ConfirmReservation
@@ -15,6 +16,8 @@ defmodule Accounts.CustomerAccountTest do
   alias Accounts.Events.BalanceReleased
   alias Accounts.Events.BalanceReservationRejected
   alias Accounts.Events.BalanceReserved
+  alias Accounts.Events.CreditAuthorized
+  alias Accounts.Events.CreditRejected
   alias Accounts.Events.CustomerAccountActivated
   alias Accounts.Events.CustomerAccountBlocked
   alias Accounts.Events.CustomerAccountClosed
@@ -253,6 +256,45 @@ defmodule Accounts.CustomerAccountTest do
     end
   end
 
+  describe "AuthorizeCredit" do
+    test "emits CreditAuthorized for an active account" do
+      assert %CreditAuthorized{account_id: "acc-1", amount: 400, correlation_id: "corr-1"} =
+               authorize_credit(active_account(0), 400)
+    end
+
+    test "emits CreditAuthorized for a blocked account, which may receive money but not send it" do
+      blocked = %CustomerAccount{active_account(0) | status: :blocked}
+
+      assert %CreditAuthorized{amount: 400} = authorize_credit(blocked, 400)
+    end
+
+    test "emits CreditRejected for a frozen account" do
+      frozen = %CustomerAccount{active_account(0) | status: :frozen}
+
+      assert %CreditRejected{
+               account_id: "acc-1",
+               amount: 400,
+               correlation_id: "corr-1",
+               reason: :credit_not_allowed
+             } = authorize_credit(frozen, 400)
+    end
+
+    test "emits CreditRejected for an account pending KYC or closed" do
+      for status <- [:pending_kyc, :closed] do
+        account = %CustomerAccount{active_account(0) | status: status}
+
+        assert %CreditRejected{reason: :credit_not_allowed} = authorize_credit(account, 400)
+      end
+    end
+
+    test "emits CreditRejected for a zero, negative or fractional amount" do
+      for amount <- [0, -100, 10.5] do
+        assert %CreditRejected{reason: :invalid_amount} =
+                 authorize_credit(active_account(0), amount)
+      end
+    end
+  end
+
   describe "applying CustomerAccountOpened" do
     test "moves the account to pending KYC" do
       event = %CustomerAccountOpened{account_id: "acc-1", customer_id: "cus-1"}
@@ -375,6 +417,24 @@ defmodule Accounts.CustomerAccountTest do
     end
   end
 
+  describe "applying CreditAuthorized and CreditRejected" do
+    test "leaves the account unchanged: money only arrives once the Ledger books it" do
+      account = active_account(1_000)
+
+      for event <- [
+            %CreditAuthorized{account_id: "acc-1", amount: 400, correlation_id: "corr-1"},
+            %CreditRejected{
+              account_id: "acc-1",
+              amount: 400,
+              correlation_id: "corr-1",
+              reason: :credit_not_allowed
+            }
+          ] do
+        assert CustomerAccount.apply(account, event) == account
+      end
+    end
+  end
+
   defp active_account(available_balance),
     do: %CustomerAccount{
       account_id: "acc-1",
@@ -384,6 +444,11 @@ defmodule Accounts.CustomerAccountTest do
 
   defp with_reservation,
     do: %CustomerAccount{active_account(600) | reservations: %{"corr-1" => 400}}
+
+  defp authorize_credit(account, amount) do
+    command = %AuthorizeCredit{account_id: "acc-1", amount: amount, correlation_id: "corr-1"}
+    CustomerAccount.execute(account, command)
+  end
 
   defp reserve(account, amount) do
     command = %ReserveBalance{account_id: "acc-1", amount: amount, correlation_id: "corr-1"}
