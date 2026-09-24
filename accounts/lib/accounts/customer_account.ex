@@ -10,6 +10,7 @@ defmodule Accounts.CustomerAccount do
   alias Accounts.Commands.ConfirmReservation
   alias Accounts.Commands.FreezeCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
+  alias Accounts.Commands.PostCredit
   alias Accounts.Commands.ReleaseBalance
   alias Accounts.Commands.ReserveBalance
   alias Accounts.Commands.UnblockCustomerAccount
@@ -18,6 +19,7 @@ defmodule Accounts.CustomerAccount do
   alias Accounts.Events.BalanceReservationRejected
   alias Accounts.Events.BalanceReserved
   alias Accounts.Events.CreditAuthorized
+  alias Accounts.Events.CreditPosted
   alias Accounts.Events.CreditRejected
   alias Accounts.Events.CustomerAccountActivated
   alias Accounts.Events.CustomerAccountBlocked
@@ -28,7 +30,13 @@ defmodule Accounts.CustomerAccount do
   alias Accounts.Events.CustomerAccountUnfrozen
   alias Accounts.Events.ReservationConfirmed
 
-  defstruct [:account_id, :status, available_balance: 0, reservations: %{}]
+  defstruct [
+    :account_id,
+    :status,
+    available_balance: 0,
+    reservations: %{},
+    posted_credits: MapSet.new()
+  ]
 
   # Debit and credit columns of the matrix (README, section 3.1).
   @can_send [:active]
@@ -156,6 +164,19 @@ defmodule Accounts.CustomerAccount do
     end
   end
 
+  def execute(%__MODULE__{} = account, %PostCredit{} = command) do
+    # README, D4: a redelivered credit is posted only once.
+    if MapSet.member?(account.posted_credits, command.correlation_id) do
+      []
+    else
+      %CreditPosted{
+        account_id: command.account_id,
+        amount: command.amount,
+        correlation_id: command.correlation_id
+      }
+    end
+  end
+
   def apply(%__MODULE__{} = account, %CustomerAccountOpened{} = event) do
     %__MODULE__{account | account_id: event.account_id, status: :pending_kyc}
   end
@@ -197,6 +218,14 @@ defmodule Accounts.CustomerAccount do
   def apply(%__MODULE__{} = account, %CreditAuthorized{}), do: account
 
   def apply(%__MODULE__{} = account, %CreditRejected{}), do: account
+
+  def apply(%__MODULE__{} = account, %CreditPosted{} = event) do
+    %__MODULE__{
+      account
+      | available_balance: account.available_balance + event.amount,
+        posted_credits: MapSet.put(account.posted_credits, event.correlation_id)
+    }
+  end
 
   def apply(%__MODULE__{} = account, %ReservationConfirmed{} = event) do
     %__MODULE__{account | reservations: Map.delete(account.reservations, event.correlation_id)}

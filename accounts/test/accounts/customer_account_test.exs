@@ -8,6 +8,7 @@ defmodule Accounts.CustomerAccountTest do
   alias Accounts.Commands.ConfirmReservation
   alias Accounts.Commands.FreezeCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
+  alias Accounts.Commands.PostCredit
   alias Accounts.Commands.ReleaseBalance
   alias Accounts.Commands.ReserveBalance
   alias Accounts.Commands.UnblockCustomerAccount
@@ -17,6 +18,7 @@ defmodule Accounts.CustomerAccountTest do
   alias Accounts.Events.BalanceReservationRejected
   alias Accounts.Events.BalanceReserved
   alias Accounts.Events.CreditAuthorized
+  alias Accounts.Events.CreditPosted
   alias Accounts.Events.CreditRejected
   alias Accounts.Events.CustomerAccountActivated
   alias Accounts.Events.CustomerAccountBlocked
@@ -295,6 +297,25 @@ defmodule Accounts.CustomerAccountTest do
     end
   end
 
+  describe "PostCredit" do
+    test "emits CreditPosted for a credit the Ledger booked" do
+      assert %CreditPosted{account_id: "acc-1", amount: 400, correlation_id: "corr-1"} =
+               post_credit(active_account(0), 400)
+    end
+
+    test "ignores a redelivered credit that was already posted" do
+      account = %CustomerAccount{active_account(400) | posted_credits: MapSet.new(["corr-1"])}
+
+      assert [] = post_credit(account, 400)
+    end
+
+    test "posts a booked credit whatever the status: it mirrors what the Ledger already booked" do
+      frozen = %CustomerAccount{active_account(0) | status: :frozen}
+
+      assert %CreditPosted{amount: 400} = post_credit(frozen, 400)
+    end
+  end
+
   describe "applying CustomerAccountOpened" do
     test "moves the account to pending KYC" do
       event = %CustomerAccountOpened{account_id: "acc-1", customer_id: "cus-1"}
@@ -435,6 +456,24 @@ defmodule Accounts.CustomerAccountTest do
     end
   end
 
+  describe "applying CreditPosted" do
+    test "adds the amount to the available balance" do
+      event = %CreditPosted{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
+
+      assert %CustomerAccount{available_balance: 1_400} =
+               CustomerAccount.apply(active_account(1_000), event)
+    end
+
+    test "remembers the correlation id, so the credit is not posted twice" do
+      event = %CreditPosted{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
+
+      assert %CustomerAccount{posted_credits: posted_credits} =
+               CustomerAccount.apply(active_account(1_000), event)
+
+      assert MapSet.member?(posted_credits, "corr-1")
+    end
+  end
+
   defp active_account(available_balance),
     do: %CustomerAccount{
       account_id: "acc-1",
@@ -447,6 +486,11 @@ defmodule Accounts.CustomerAccountTest do
 
   defp authorize_credit(account, amount) do
     command = %AuthorizeCredit{account_id: "acc-1", amount: amount, correlation_id: "corr-1"}
+    CustomerAccount.execute(account, command)
+  end
+
+  defp post_credit(account, amount) do
+    command = %PostCredit{account_id: "acc-1", amount: amount, correlation_id: "corr-1"}
     CustomerAccount.execute(account, command)
   end
 
