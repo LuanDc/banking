@@ -418,34 +418,43 @@ Red sticky notes raised during modeling. Each one is worth an invariant test onc
 | H6 | **Residual balance at closure.** Does `CloseCustomerAccount` require a zero balance, or does it generate a transfer entry? | A terminal state holding a balance breaks reconciliation. |
 | H7 | **Reversals.** An accounting batch is immutable — is a reversal a new, inverted batch? | Determines whether `LedgerBatchReversed` exists. |
 | H8 | **Projection failure.** `LedgerBatchBooked` written but `BalanceView` stale. | Needs projection replay and lag monitoring. |
+| H9 | **Event transport between services.** `accounts` and `ledger` have separate event stores, so Commanded's PubSub does not carry `BalanceReserved` or `LedgerBatchBooked` across. Broker, outbox, or a subscription to the other event store? | Nothing crosses the Context Map until this is decided — it blocks `LedgerRouter` and the saga in section 5. |
 
 ---
 
 ## 9. From the diagram to the code
 
-Mapping onto the folder structure in section 6 of the specification:
+Each bounded context is its own Phoenix service, with its own Postgres database for read models
+and its own event store. This departs from the single `lib/core_banking/` app in section 6 of the
+specification: the two contexts share no code and no database, as the Context Map in section 6
+above requires.
 
 ```
-lib/core_banking/accounts/
-├── customer_account.ex        # 🟨 aggregate + FSM (section 3)
-├── commands/                  # 🟦 commands (section 7)
-├── events/                    # 🟧 events (section 7)
-└── state_machine.ex           # matrix invariants (section 3.1)
+accounts/                          # Account Management Context
+└── lib/accounts/
+    ├── customer_account.ex        # 🟨 aggregate: FSM, transition matrix (section 3.1) and guards
+    ├── commands/                  # 🟦 commands (section 7)
+    ├── events/                    # 🟧 events (section 7)
+    ├── process_managers/          # 🟪 reservation confirmation and compensation (section 5)
+    └── projections/               # 🟩 AccountStatusView, ReservationsView
 
-lib/core_banking/ledger/
-├── transaction_batch.ex       # 🟨 aggregate + D = C invariant (section 4.1)
-├── ledger_entry.ex            # DEBIT/CREDIT value object
-├── commands/ · events/        # 🟦 🟧
-└── double_entry.ex            # mathematical validation
-
-lib/core_banking/process_managers/
-└── ledger_router.ex           # 🟪 policies (section 5)
-
-lib/core_banking/projections/
-├── balance_view.ex            # 🟩 read models (section 7)
-├── account_status_view.ex
-└── statement_view.ex
+ledger/                            # Ledger Context
+└── lib/ledger/
+    ├── transaction_batch.ex       # 🟨 aggregate: D = C invariant (section 4.1)
+    ├── ledger_entry.ex            # DEBIT/CREDIT value object
+    ├── commands/ · events/        # 🟦 🟧
+    ├── process_managers/
+    │   └── ledger_router.ex       # 🟪 BalanceReserved → BookTransactionBatch (section 5)
+    └── projections/               # 🟩 BalanceView, StatementView, TrialBalanceView
 ```
+
+Each service has the same setup: Phoenix API, Ecto for the read models, Commanded with a
+Postgres event store in its own database (`<App>.App`, `<App>.EventStore`), and the `mix quality`
+gate. Only `CustomerAccount` exists so far; the rest of the tree is where each piece goes.
+
+**An aggregate's rules live in the aggregate.** The FSM transition matrix is a module attribute
+of `CustomerAccount`, next to the commands it guards, rather than a separate `state_machine.ex`,
+so every rule of the aggregate reads from one file.
 
 **Suggested implementation order:** the `CustomerAccount` FSM → the `TransactionBatch` double-entry
 invariant → `LedgerRouter` wiring the two together → projections → the compensation paths.
