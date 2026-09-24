@@ -9,7 +9,16 @@ import Config
 
 config :accounts,
   ecto_repos: [Accounts.Repo],
+  event_stores: [Accounts.EventStore],
   generators: [timestamp_type: :utc_datetime, binary_id: true]
+
+# Commanded dispatches commands through Accounts.App, which reads and appends
+# events with Accounts.EventStore.
+config :accounts, Accounts.App,
+  event_store: [
+    adapter: Commanded.EventStore.Adapters.EventStore,
+    event_store: Accounts.EventStore
+  ]
 
 # Configures the endpoint
 config :accounts, AccountsWeb.Endpoint,

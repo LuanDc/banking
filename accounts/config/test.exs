@@ -13,6 +13,16 @@ config :accounts, Accounts.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
+# The event store has no Ecto sandbox, so tests share one database per
+# partition and reset it between runs.
+config :accounts, Accounts.EventStore,
+  serializer: EventStore.JsonSerializer,
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  database: "accounts_eventstore_test#{System.get_env("MIX_TEST_PARTITION")}",
+  pool_size: 2
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :accounts, AccountsWeb.Endpoint,
