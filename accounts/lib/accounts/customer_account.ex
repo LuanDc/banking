@@ -5,12 +5,14 @@ defmodule Accounts.CustomerAccount do
 
   alias Accounts.Commands.ActivateCustomerAccount
   alias Accounts.Commands.BlockCustomerAccount
+  alias Accounts.Commands.CloseCustomerAccount
   alias Accounts.Commands.FreezeCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
   alias Accounts.Commands.UnblockCustomerAccount
   alias Accounts.Commands.UnfreezeCustomerAccount
   alias Accounts.Events.CustomerAccountActivated
   alias Accounts.Events.CustomerAccountBlocked
+  alias Accounts.Events.CustomerAccountClosed
   alias Accounts.Events.CustomerAccountFrozen
   alias Accounts.Events.CustomerAccountOpened
   alias Accounts.Events.CustomerAccountUnblocked
@@ -25,7 +27,8 @@ defmodule Accounts.CustomerAccount do
     BlockCustomerAccount => [:active],
     UnblockCustomerAccount => [:blocked],
     FreezeCustomerAccount => [:active],
-    UnfreezeCustomerAccount => [:frozen]
+    UnfreezeCustomerAccount => [:frozen],
+    CloseCustomerAccount => [:active, :blocked]
   }
 
   def execute(%__MODULE__{status: nil}, %OpenCustomerAccount{} = command) do
@@ -64,6 +67,12 @@ defmodule Accounts.CustomerAccount do
     end
   end
 
+  def execute(%__MODULE__{status: status}, %CloseCustomerAccount{} = command) do
+    with :ok <- guard(status, command) do
+      %CustomerAccountClosed{account_id: command.account_id}
+    end
+  end
+
   def apply(%__MODULE__{} = account, %CustomerAccountOpened{} = event) do
     %__MODULE__{account | account_id: event.account_id, status: :pending_kyc}
   end
@@ -86,6 +95,10 @@ defmodule Accounts.CustomerAccount do
 
   def apply(%__MODULE__{} = account, %CustomerAccountUnfrozen{}) do
     %__MODULE__{account | status: :active}
+  end
+
+  def apply(%__MODULE__{} = account, %CustomerAccountClosed{}) do
+    %__MODULE__{account | status: :closed}
   end
 
   defp guard(status, %command{}) do

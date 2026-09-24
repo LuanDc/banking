@@ -3,6 +3,7 @@ defmodule Accounts.CustomerAccountTest do
 
   alias Accounts.Commands.ActivateCustomerAccount
   alias Accounts.Commands.BlockCustomerAccount
+  alias Accounts.Commands.CloseCustomerAccount
   alias Accounts.Commands.FreezeCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
   alias Accounts.Commands.UnblockCustomerAccount
@@ -10,6 +11,7 @@ defmodule Accounts.CustomerAccountTest do
   alias Accounts.CustomerAccount
   alias Accounts.Events.CustomerAccountActivated
   alias Accounts.Events.CustomerAccountBlocked
+  alias Accounts.Events.CustomerAccountClosed
   alias Accounts.Events.CustomerAccountFrozen
   alias Accounts.Events.CustomerAccountOpened
   alias Accounts.Events.CustomerAccountUnblocked
@@ -123,6 +125,46 @@ defmodule Accounts.CustomerAccountTest do
     end
   end
 
+  describe "CloseCustomerAccount" do
+    test "emits CustomerAccountClosed for an active account" do
+      account = %CustomerAccount{account_id: "acc-1", status: :active}
+      command = %CloseCustomerAccount{account_id: "acc-1"}
+
+      assert %CustomerAccountClosed{account_id: "acc-1"} =
+               CustomerAccount.execute(account, command)
+    end
+
+    test "emits CustomerAccountClosed for a blocked account" do
+      account = %CustomerAccount{account_id: "acc-1", status: :blocked}
+      command = %CloseCustomerAccount{account_id: "acc-1"}
+
+      assert %CustomerAccountClosed{account_id: "acc-1"} =
+               CustomerAccount.execute(account, command)
+    end
+
+    test "rejects a frozen account" do
+      account = %CustomerAccount{account_id: "acc-1", status: :frozen}
+      command = %CloseCustomerAccount{account_id: "acc-1"}
+
+      assert {:error, :invalid_transition} = CustomerAccount.execute(account, command)
+    end
+
+    test "closed is terminal: no transition applies to a closed account" do
+      account = %CustomerAccount{account_id: "acc-1", status: :closed}
+
+      for command <- [
+            %ActivateCustomerAccount{account_id: "acc-1"},
+            %BlockCustomerAccount{account_id: "acc-1", reason: "suspected fraud"},
+            %UnblockCustomerAccount{account_id: "acc-1"},
+            %FreezeCustomerAccount{account_id: "acc-1", reason: "court order"},
+            %UnfreezeCustomerAccount{account_id: "acc-1"},
+            %CloseCustomerAccount{account_id: "acc-1"}
+          ] do
+        assert {:error, :invalid_transition} = CustomerAccount.execute(account, command)
+      end
+    end
+  end
+
   describe "applying CustomerAccountOpened" do
     test "moves the account to pending KYC" do
       event = %CustomerAccountOpened{account_id: "acc-1", customer_id: "cus-1"}
@@ -178,6 +220,16 @@ defmodule Accounts.CustomerAccountTest do
       event = %CustomerAccountUnfrozen{account_id: "acc-1"}
 
       assert %CustomerAccount{account_id: "acc-1", status: :active} =
+               CustomerAccount.apply(account, event)
+    end
+  end
+
+  describe "applying CustomerAccountClosed" do
+    test "moves the account to closed" do
+      account = %CustomerAccount{account_id: "acc-1", status: :active}
+      event = %CustomerAccountClosed{account_id: "acc-1"}
+
+      assert %CustomerAccount{account_id: "acc-1", status: :closed} =
                CustomerAccount.apply(account, event)
     end
   end
