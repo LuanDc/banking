@@ -7,7 +7,12 @@ defmodule Ledger.TransactionBatch do
   alias Ledger.Events.LedgerBatchBooked
   alias Ledger.Events.LedgerBatchRejected
 
-  defstruct [:batch_id]
+  defstruct [:batch_id, :status]
+
+  # README, D4: a redelivered command for a decided batch books nothing.
+  def execute(%__MODULE__{status: status}, %BookTransactionBatch{})
+      when status in [:booked, :rejected],
+      do: []
 
   def execute(%__MODULE__{}, %BookTransactionBatch{} = command) do
     case validate(command.entries) do
@@ -25,6 +30,14 @@ defmodule Ledger.TransactionBatch do
           reason: reason
         }
     end
+  end
+
+  def apply(%__MODULE__{} = batch, %LedgerBatchBooked{} = event) do
+    %__MODULE__{batch | batch_id: event.batch_id, status: :booked}
+  end
+
+  def apply(%__MODULE__{} = batch, %LedgerBatchRejected{} = event) do
+    %__MODULE__{batch | batch_id: event.batch_id, status: :rejected}
   end
 
   defp validate([]), do: {:error, :empty}

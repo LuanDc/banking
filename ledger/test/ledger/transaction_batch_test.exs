@@ -48,6 +48,40 @@ defmodule Ledger.TransactionBatchTest do
       assert %LedgerBatchRejected{reason: :invalid_entry_type} =
                book([debit("acc-1", 1_000), credit("acc-2", 1_000), stray])
     end
+
+    test "ignores a redelivered command for a batch that was already booked" do
+      booked = %TransactionBatch{batch_id: "batch-1", status: :booked}
+
+      assert [] = book([debit("acc-1", 1_000), credit("acc-2", 1_000)], booked)
+    end
+
+    test "ignores a redelivered command for a batch that was already rejected" do
+      rejected = %TransactionBatch{batch_id: "batch-1", status: :rejected}
+
+      assert [] = book([], rejected)
+    end
+  end
+
+  describe "applying LedgerBatchBooked" do
+    test "marks the batch as booked" do
+      event = %LedgerBatchBooked{
+        batch_id: "batch-1",
+        correlation_id: "corr-1",
+        entries: [debit("acc-1", 1_000), credit("acc-2", 1_000)]
+      }
+
+      assert %TransactionBatch{batch_id: "batch-1", status: :booked} =
+               TransactionBatch.apply(%TransactionBatch{}, event)
+    end
+  end
+
+  describe "applying LedgerBatchRejected" do
+    test "marks the batch as rejected" do
+      event = %LedgerBatchRejected{batch_id: "batch-1", correlation_id: "corr-1", reason: :empty}
+
+      assert %TransactionBatch{batch_id: "batch-1", status: :rejected} =
+               TransactionBatch.apply(%TransactionBatch{}, event)
+    end
   end
 
   defp book(entries, batch \\ %TransactionBatch{}) do
