@@ -4,6 +4,7 @@ defmodule Accounts.CustomerAccountTest do
   alias Accounts.Commands.ActivateCustomerAccount
   alias Accounts.Commands.BlockCustomerAccount
   alias Accounts.Commands.CloseCustomerAccount
+  alias Accounts.Commands.ConfirmReservation
   alias Accounts.Commands.FreezeCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
   alias Accounts.Commands.ReserveBalance
@@ -19,6 +20,7 @@ defmodule Accounts.CustomerAccountTest do
   alias Accounts.Events.CustomerAccountOpened
   alias Accounts.Events.CustomerAccountUnblocked
   alias Accounts.Events.CustomerAccountUnfrozen
+  alias Accounts.Events.ReservationConfirmed
 
   describe "OpenCustomerAccount" do
     test "emits CustomerAccountOpened for a new account" do
@@ -219,6 +221,21 @@ defmodule Accounts.CustomerAccountTest do
     end
   end
 
+  describe "ConfirmReservation" do
+    test "emits ReservationConfirmed for an open reservation" do
+      command = %ConfirmReservation{account_id: "acc-1", correlation_id: "corr-1"}
+
+      assert %ReservationConfirmed{account_id: "acc-1", correlation_id: "corr-1", amount: 400} =
+               CustomerAccount.execute(with_reservation(), command)
+    end
+
+    test "ignores a reservation that is not open, e.g. one already confirmed" do
+      command = %ConfirmReservation{account_id: "acc-1", correlation_id: "corr-9"}
+
+      assert [] = CustomerAccount.execute(with_reservation(), command)
+    end
+  end
+
   describe "applying CustomerAccountOpened" do
     test "moves the account to pending KYC" do
       event = %CustomerAccountOpened{account_id: "acc-1", customer_id: "cus-1"}
@@ -319,12 +336,26 @@ defmodule Accounts.CustomerAccountTest do
     end
   end
 
+  describe "applying ReservationConfirmed" do
+    test "settles the reservation, leaving the available balance as it was" do
+      event = %ReservationConfirmed{account_id: "acc-1", correlation_id: "corr-1", amount: 400}
+
+      assert %CustomerAccount{available_balance: 600, reservations: reservations} =
+               CustomerAccount.apply(with_reservation(), event)
+
+      assert reservations == %{}
+    end
+  end
+
   defp active_account(available_balance),
     do: %CustomerAccount{
       account_id: "acc-1",
       status: :active,
       available_balance: available_balance
     }
+
+  defp with_reservation,
+    do: %CustomerAccount{active_account(600) | reservations: %{"corr-1" => 400}}
 
   defp reserve(account, amount) do
     command = %ReserveBalance{account_id: "acc-1", amount: amount, correlation_id: "corr-1"}

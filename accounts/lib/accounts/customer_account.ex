@@ -6,6 +6,7 @@ defmodule Accounts.CustomerAccount do
   alias Accounts.Commands.ActivateCustomerAccount
   alias Accounts.Commands.BlockCustomerAccount
   alias Accounts.Commands.CloseCustomerAccount
+  alias Accounts.Commands.ConfirmReservation
   alias Accounts.Commands.FreezeCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
   alias Accounts.Commands.ReserveBalance
@@ -20,6 +21,7 @@ defmodule Accounts.CustomerAccount do
   alias Accounts.Events.CustomerAccountOpened
   alias Accounts.Events.CustomerAccountUnblocked
   alias Accounts.Events.CustomerAccountUnfrozen
+  alias Accounts.Events.ReservationConfirmed
 
   defstruct [:account_id, :status, available_balance: 0, reservations: %{}]
 
@@ -100,6 +102,19 @@ defmodule Accounts.CustomerAccount do
     end
   end
 
+  # README, D4: a redelivered confirmation for a settled reservation does nothing.
+  def execute(%__MODULE__{reservations: reservations}, %ConfirmReservation{correlation_id: id})
+      when not is_map_key(reservations, id),
+      do: []
+
+  def execute(%__MODULE__{} = account, %ConfirmReservation{} = command) do
+    %ReservationConfirmed{
+      account_id: command.account_id,
+      correlation_id: command.correlation_id,
+      amount: Map.fetch!(account.reservations, command.correlation_id)
+    }
+  end
+
   def apply(%__MODULE__{} = account, %CustomerAccountOpened{} = event) do
     %__MODULE__{account | account_id: event.account_id, status: :pending_kyc}
   end
@@ -137,6 +152,10 @@ defmodule Accounts.CustomerAccount do
   end
 
   def apply(%__MODULE__{} = account, %BalanceReservationRejected{}), do: account
+
+  def apply(%__MODULE__{} = account, %ReservationConfirmed{} = event) do
+    %__MODULE__{account | reservations: Map.delete(account.reservations, event.correlation_id)}
+  end
 
   # README, section 3.1: only an ACTIVE account may send money.
   defp check_reservation(account, amount) do
