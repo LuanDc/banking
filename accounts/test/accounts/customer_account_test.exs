@@ -2,9 +2,11 @@ defmodule Accounts.CustomerAccountTest do
   use ExUnit.Case, async: true
 
   alias Accounts.Commands.ActivateCustomerAccount
+  alias Accounts.Commands.BlockCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
   alias Accounts.CustomerAccount
   alias Accounts.Events.CustomerAccountActivated
+  alias Accounts.Events.CustomerAccountBlocked
   alias Accounts.Events.CustomerAccountOpened
 
   describe "OpenCustomerAccount" do
@@ -40,6 +42,23 @@ defmodule Accounts.CustomerAccountTest do
     end
   end
 
+  describe "BlockCustomerAccount" do
+    test "emits CustomerAccountBlocked for an active account" do
+      account = %CustomerAccount{account_id: "acc-1", status: :active}
+      command = %BlockCustomerAccount{account_id: "acc-1", reason: "suspected fraud"}
+
+      assert %CustomerAccountBlocked{account_id: "acc-1", reason: "suspected fraud"} =
+               CustomerAccount.execute(account, command)
+    end
+
+    test "rejects an account that is not active" do
+      account = %CustomerAccount{account_id: "acc-1", status: :pending_kyc}
+      command = %BlockCustomerAccount{account_id: "acc-1", reason: "suspected fraud"}
+
+      assert {:error, :invalid_transition} = CustomerAccount.execute(account, command)
+    end
+  end
+
   describe "applying CustomerAccountOpened" do
     test "moves the account to pending KYC" do
       event = %CustomerAccountOpened{account_id: "acc-1", customer_id: "cus-1"}
@@ -55,6 +74,16 @@ defmodule Accounts.CustomerAccountTest do
       event = %CustomerAccountActivated{account_id: "acc-1"}
 
       assert %CustomerAccount{account_id: "acc-1", status: :active} =
+               CustomerAccount.apply(account, event)
+    end
+  end
+
+  describe "applying CustomerAccountBlocked" do
+    test "moves the account to blocked" do
+      account = %CustomerAccount{account_id: "acc-1", status: :active}
+      event = %CustomerAccountBlocked{account_id: "acc-1", reason: "suspected fraud"}
+
+      assert %CustomerAccount{account_id: "acc-1", status: :blocked} =
                CustomerAccount.apply(account, event)
     end
   end

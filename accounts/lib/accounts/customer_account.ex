@@ -4,8 +4,10 @@ defmodule Accounts.CustomerAccount do
   """
 
   alias Accounts.Commands.ActivateCustomerAccount
+  alias Accounts.Commands.BlockCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
   alias Accounts.Events.CustomerAccountActivated
+  alias Accounts.Events.CustomerAccountBlocked
   alias Accounts.Events.CustomerAccountOpened
 
   defstruct [:account_id, :status]
@@ -22,11 +24,21 @@ defmodule Accounts.CustomerAccount do
 
   def execute(%__MODULE__{}, %ActivateCustomerAccount{}), do: {:error, :invalid_transition}
 
+  def execute(%__MODULE__{status: :active}, %BlockCustomerAccount{} = command) do
+    %CustomerAccountBlocked{account_id: command.account_id, reason: command.reason}
+  end
+
+  def execute(%__MODULE__{}, %BlockCustomerAccount{}), do: {:error, :invalid_transition}
+
   def apply(%__MODULE__{} = account, %CustomerAccountOpened{} = event) do
     %__MODULE__{account | account_id: event.account_id, status: :pending_kyc}
   end
 
   def apply(%__MODULE__{} = account, %CustomerAccountActivated{}) do
     %__MODULE__{account | status: :active}
+  end
+
+  def apply(%__MODULE__{} = account, %CustomerAccountBlocked{}) do
+    %__MODULE__{account | status: :blocked}
   end
 end
