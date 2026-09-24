@@ -28,6 +28,7 @@ defmodule AccountsWeb.ConnCase do
       import Plug.Conn
       import Phoenix.ConnTest
       import AccountsWeb.ConnCase
+      import Accounts.Factory
     end
   end
 
