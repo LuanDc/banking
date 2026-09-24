@@ -4,10 +4,12 @@ defmodule Accounts.CustomerAccountTest do
   alias Accounts.Commands.ActivateCustomerAccount
   alias Accounts.Commands.BlockCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
+  alias Accounts.Commands.UnblockCustomerAccount
   alias Accounts.CustomerAccount
   alias Accounts.Events.CustomerAccountActivated
   alias Accounts.Events.CustomerAccountBlocked
   alias Accounts.Events.CustomerAccountOpened
+  alias Accounts.Events.CustomerAccountUnblocked
 
   describe "OpenCustomerAccount" do
     test "emits CustomerAccountOpened for a new account" do
@@ -40,6 +42,13 @@ defmodule Accounts.CustomerAccountTest do
 
       assert {:error, :invalid_transition} = CustomerAccount.execute(account, command)
     end
+
+    test "rejects a blocked account, which is only reactivated by unblocking" do
+      account = %CustomerAccount{account_id: "acc-1", status: :blocked}
+      command = %ActivateCustomerAccount{account_id: "acc-1"}
+
+      assert {:error, :invalid_transition} = CustomerAccount.execute(account, command)
+    end
   end
 
   describe "BlockCustomerAccount" do
@@ -54,6 +63,23 @@ defmodule Accounts.CustomerAccountTest do
     test "rejects an account that is not active" do
       account = %CustomerAccount{account_id: "acc-1", status: :pending_kyc}
       command = %BlockCustomerAccount{account_id: "acc-1", reason: "suspected fraud"}
+
+      assert {:error, :invalid_transition} = CustomerAccount.execute(account, command)
+    end
+  end
+
+  describe "UnblockCustomerAccount" do
+    test "emits CustomerAccountUnblocked for a blocked account" do
+      account = %CustomerAccount{account_id: "acc-1", status: :blocked}
+      command = %UnblockCustomerAccount{account_id: "acc-1"}
+
+      assert %CustomerAccountUnblocked{account_id: "acc-1"} =
+               CustomerAccount.execute(account, command)
+    end
+
+    test "rejects an account that is not blocked" do
+      account = %CustomerAccount{account_id: "acc-1", status: :active}
+      command = %UnblockCustomerAccount{account_id: "acc-1"}
 
       assert {:error, :invalid_transition} = CustomerAccount.execute(account, command)
     end
@@ -84,6 +110,16 @@ defmodule Accounts.CustomerAccountTest do
       event = %CustomerAccountBlocked{account_id: "acc-1", reason: "suspected fraud"}
 
       assert %CustomerAccount{account_id: "acc-1", status: :blocked} =
+               CustomerAccount.apply(account, event)
+    end
+  end
+
+  describe "applying CustomerAccountUnblocked" do
+    test "moves the account back to active" do
+      account = %CustomerAccount{account_id: "acc-1", status: :blocked}
+      event = %CustomerAccountUnblocked{account_id: "acc-1"}
+
+      assert %CustomerAccount{account_id: "acc-1", status: :active} =
                CustomerAccount.apply(account, event)
     end
   end

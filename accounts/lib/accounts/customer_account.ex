@@ -6,16 +6,20 @@ defmodule Accounts.CustomerAccount do
   alias Accounts.Commands.ActivateCustomerAccount
   alias Accounts.Commands.BlockCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
+  alias Accounts.Commands.UnblockCustomerAccount
   alias Accounts.Events.CustomerAccountActivated
   alias Accounts.Events.CustomerAccountBlocked
   alias Accounts.Events.CustomerAccountOpened
+  alias Accounts.Events.CustomerAccountUnblocked
 
   defstruct [:account_id, :status]
 
-  # Allowed status transitions (README, section 3.1).
-  @transitions %{
-    pending_kyc: [:active],
-    active: [:blocked]
+  # Statuses each command may run from (README, sections 3.1 and 7).
+  # The status it leads to is set by the event's apply/2.
+  @allowed_from %{
+    ActivateCustomerAccount => [:pending_kyc],
+    BlockCustomerAccount => [:active],
+    UnblockCustomerAccount => [:blocked]
   }
 
   def execute(%__MODULE__{status: nil}, %OpenCustomerAccount{} = command) do
@@ -25,14 +29,20 @@ defmodule Accounts.CustomerAccount do
   def execute(%__MODULE__{}, %OpenCustomerAccount{}), do: {:error, :account_already_exists}
 
   def execute(%__MODULE__{status: status}, %ActivateCustomerAccount{} = command) do
-    with :ok <- transition(status, :active) do
+    with :ok <- guard(status, command) do
       %CustomerAccountActivated{account_id: command.account_id}
     end
   end
 
   def execute(%__MODULE__{status: status}, %BlockCustomerAccount{} = command) do
-    with :ok <- transition(status, :blocked) do
+    with :ok <- guard(status, command) do
       %CustomerAccountBlocked{account_id: command.account_id, reason: command.reason}
+    end
+  end
+
+  def execute(%__MODULE__{status: status}, %UnblockCustomerAccount{} = command) do
+    with :ok <- guard(status, command) do
+      %CustomerAccountUnblocked{account_id: command.account_id}
     end
   end
 
@@ -48,7 +58,11 @@ defmodule Accounts.CustomerAccount do
     %__MODULE__{account | status: :blocked}
   end
 
-  defp transition(from, to) do
-    if to in Map.get(@transitions, from, []), do: :ok, else: {:error, :invalid_transition}
+  def apply(%__MODULE__{} = account, %CustomerAccountUnblocked{}) do
+    %__MODULE__{account | status: :active}
+  end
+
+  defp guard(status, %command{}) do
+    if status in Map.fetch!(@allowed_from, command), do: :ok, else: {:error, :invalid_transition}
   end
 end
