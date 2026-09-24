@@ -413,12 +413,12 @@ Red sticky notes raised during modeling. Each one is worth an invariant test onc
 | H1 | **Owner of the chart of accounts.** Does `Ledger` know the customer's accounting accounts, or does it receive the identifiers in the event payload? | Determines whether `CustomerAccountOpened` has to trigger the creation of accounting accounts. |
 | H2 | **Credit into a `BLOCKED` account.** The matrix allows inbound money, but credits don't go through a reservation. Who authorizes the entry? | If `Ledger` doesn't check the status, `BLOCKED` is only enforced on debits. |
 | H3 | **Reservation timeout.** Does a `BalanceReserved` with no matching `LedgerBatchBooked` stay pending forever? | Without expiry, available balance leaks. Calls for a scheduler or a `ReservationExpired` event. |
-| H4 | **Idempotency.** Is `correlation_id` the deduplication key in `Ledger`? | A PubSub redelivery could book the same batch twice. |
+| H4 | **Idempotency.** Is `correlation_id` the deduplication key in `Ledger`? | A PubSub redelivery could book the same batch twice. **Resolved → D4.** |
 | H5 | **Freezing with an open reservation.** `FreezeCustomerAccount` during an in-flight saga: abort it or let it finish? | Affects the guards on `ConfirmReservation`. |
 | H6 | **Residual balance at closure.** Does `CloseCustomerAccount` require a zero balance, or does it generate a transfer entry? | A terminal state holding a balance breaks reconciliation. |
 | H7 | **Reversals.** An accounting batch is immutable — is a reversal a new, inverted batch? | Determines whether `LedgerBatchReversed` exists. |
 | H8 | **Projection failure.** `LedgerBatchBooked` written but `BalanceView` stale. | Needs projection replay and lag monitoring. |
-| H9 | **Event transport between services.** `accounts` and `ledger` have separate event stores, so Commanded's PubSub does not carry `BalanceReserved` or `LedgerBatchBooked` across. Broker, outbox, or a subscription to the other event store? | Nothing crosses the Context Map until this is decided — it blocks `LedgerRouter` and the saga in section 5. |
+| H9 | **Event transport between services.** `accounts` and `ledger` have separate event stores, so Commanded's PubSub does not carry `BalanceReserved` or `LedgerBatchBooked` across. Broker, outbox, or a subscription to the other event store? | Nothing crosses the Context Map until this is decided — it blocks `LedgerRouter` and the saga in section 5. **Resolved → D3.** |
 
 ---
 
@@ -459,6 +459,56 @@ command may run from, as in the Guard column of section 7 — not by target stat
 `Unblock` both lead to `ACTIVE`, but from different statuses.
 
 **Suggested implementation order:** the `CustomerAccount` FSM → the `TransactionBatch` double-entry
-invariant → `LedgerRouter` wiring the two together → projections → the compensation paths.
+invariant → available balance and `ReserveBalance` in `CustomerAccount` → event transport (D3) and
+`LedgerRouter` wiring the two together → projections → the compensation paths. Every step before the
+transport is pure aggregate work, testable without any infrastructure.
 The specification's priority tests are exactly hotspots H2, H3 and H5, plus the mathematical
 validation from section 4.1.
+
+---
+
+## 10. Design decisions
+
+Decisions taken while implementing, to keep the lab close to a real service while staying lean.
+
+### D1 · Money is an integer in cents
+
+Amounts are integers in minor units: `10.00 BRL = 1_000`. Currency is fixed to BRL for now.
+
+- Integer arithmetic is exact, and integers pass through the event store's JSON serializer
+  unchanged (a `Decimal` would become a string).
+- Two places match what payment schemes (PIX/SPB) settle, so no conversion or rounding is
+  needed at their boundary.
+
+### D2 · Two balances, one per context
+
+| Balance | Owner | Meaning |
+| --- | --- | --- |
+| Ledger balance | `Ledger` | Sum of booked entries — the source of truth, shown by `BalanceView`. |
+| Available balance | `CustomerAccount` | Ledger balance minus open reservations — what `ReserveBalance` checks. |
+
+This is the authorization × posting split used by banks and card issuers. `CustomerAccount`
+keeps its available balance in its own state, derived from its own events: booked credits raise
+it, reservations hold it. It never queries `Ledger` synchronously.
+
+Money enters an account the way it does in a real bank: a batch in `Ledger` debits a settlement
+account (e.g. the bank's PIX account) and credits the customer, and `Accounts` learns about it
+from `LedgerBatchBooked`.
+
+### D3 · Events cross services through RabbitMQ, with the event store as the outbox
+
+- In each service, a Commanded event handler with a durable subscription reads its own event
+  store and publishes only the **integration events** — the public contract of section 6:
+  `BalanceReserved`, `LedgerBatchBooked`, `LedgerBatchRejected` — to a RabbitMQ exchange.
+- On the other side, a Broadway consumer turns each message into a command.
+- If publishing fails, the subscription does not advance and the event is sent again: the event
+  store already is the outbox, and delivery is **at-least-once**.
+
+Rejected: subscribing to the other service's event store (a shared database), distributed
+Phoenix.PubSub (not durable, hides the failures this lab is about), Kafka (too heavy here).
+
+### D4 · Consumers deduplicate by `correlation_id`
+
+At-least-once delivery means every message may arrive twice. The consuming side uses the
+`correlation_id` as the deduplication key, so a redelivered `BalanceReserved` cannot book the
+same batch twice, and a redelivered `LedgerBatchBooked` cannot credit an account twice.
