@@ -4,6 +4,7 @@ defmodule Accounts.CustomerAccountTest do
   alias Accounts.Commands.ActivateCustomerAccount
   alias Accounts.Commands.AuthorizeCredit
   alias Accounts.Commands.BlockCustomerAccount
+  alias Accounts.Commands.CancelCredit
   alias Accounts.Commands.CloseCustomerAccount
   alias Accounts.Commands.ConfirmReservation
   alias Accounts.Commands.FreezeCustomerAccount
@@ -18,6 +19,7 @@ defmodule Accounts.CustomerAccountTest do
   alias Accounts.Events.BalanceReservationRejected
   alias Accounts.Events.BalanceReserved
   alias Accounts.Events.CreditAuthorized
+  alias Accounts.Events.CreditCancelled
   alias Accounts.Events.CreditPosted
   alias Accounts.Events.CreditRejected
   alias Accounts.Events.CustomerAccountActivated
@@ -159,6 +161,26 @@ defmodule Accounts.CustomerAccountTest do
       command = %CloseCustomerAccount{account_id: "acc-1"}
 
       assert {:error, :invalid_transition} = CustomerAccount.execute(account, command)
+    end
+
+    test "rejects an account that still holds available balance (H6)" do
+      command = %CloseCustomerAccount{account_id: "acc-1"}
+
+      assert {:error, :balance_not_zero} = CustomerAccount.execute(active_account(1), command)
+    end
+
+    test "rejects an account with a reservation still open (H6)" do
+      account = %CustomerAccount{active_account(0) | reservations: %{"corr-1" => 400}}
+      command = %CloseCustomerAccount{account_id: "acc-1"}
+
+      assert {:error, :open_reservations} = CustomerAccount.execute(account, command)
+    end
+
+    test "rejects an account with an authorized credit still on its way (H6)" do
+      account = %CustomerAccount{active_account(0) | pending_credits: %{"corr-1" => 400}}
+      command = %CloseCustomerAccount{account_id: "acc-1"}
+
+      assert {:error, :pending_credits} = CustomerAccount.execute(account, command)
     end
 
     test "closed is terminal: no transition applies to a closed account" do
@@ -330,6 +352,22 @@ defmodule Accounts.CustomerAccountTest do
     end
   end
 
+  describe "CancelCredit" do
+    test "emits CreditCancelled for a pending credit whose batch the Ledger rejected" do
+      account = %CustomerAccount{active_account(0) | pending_credits: %{"corr-1" => 400}}
+      command = %CancelCredit{account_id: "acc-1", correlation_id: "corr-1"}
+
+      assert %CreditCancelled{account_id: "acc-1", correlation_id: "corr-1", amount: 400} =
+               CustomerAccount.execute(account, command)
+    end
+
+    test "ignores a credit that is not pending, e.g. one already cancelled" do
+      command = %CancelCredit{account_id: "acc-1", correlation_id: "corr-1"}
+
+      assert [] = CustomerAccount.execute(active_account(0), command)
+    end
+  end
+
   describe "applying CustomerAccountOpened" do
     test "moves the account to pending KYC" do
       event = %CustomerAccountOpened{account_id: "acc-1", customer_id: "cus-1"}
@@ -452,21 +490,27 @@ defmodule Accounts.CustomerAccountTest do
     end
   end
 
-  describe "applying CreditAuthorized and CreditRejected" do
-    test "leaves the account unchanged: money only arrives once the Ledger books it" do
+  describe "applying CreditAuthorized" do
+    test "records the credit as pending until the Ledger books it" do
+      event = %CreditAuthorized{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
+
+      assert %CustomerAccount{available_balance: 1_000, pending_credits: %{"corr-1" => 400}} =
+               CustomerAccount.apply(active_account(1_000), event)
+    end
+  end
+
+  describe "applying CreditRejected" do
+    test "leaves the account unchanged" do
       account = active_account(1_000)
 
-      for event <- [
-            %CreditAuthorized{account_id: "acc-1", amount: 400, correlation_id: "corr-1"},
-            %CreditRejected{
-              account_id: "acc-1",
-              amount: 400,
-              correlation_id: "corr-1",
-              reason: :credit_not_allowed
-            }
-          ] do
-        assert CustomerAccount.apply(account, event) == account
-      end
+      event = %CreditRejected{
+        account_id: "acc-1",
+        amount: 400,
+        correlation_id: "corr-1",
+        reason: :credit_not_allowed
+      }
+
+      assert CustomerAccount.apply(account, event) == account
     end
   end
 
@@ -485,6 +529,28 @@ defmodule Accounts.CustomerAccountTest do
                CustomerAccount.apply(active_account(1_000), event)
 
       assert MapSet.member?(posted_credits, "corr-1")
+    end
+
+    test "clears the pending credit it settles" do
+      account = %CustomerAccount{active_account(1_000) | pending_credits: %{"corr-1" => 400}}
+      event = %CreditPosted{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
+
+      assert %CustomerAccount{pending_credits: pending_credits} =
+               CustomerAccount.apply(account, event)
+
+      assert pending_credits == %{}
+    end
+  end
+
+  describe "applying CreditCancelled" do
+    test "drops the pending credit, leaving the available balance as it was" do
+      account = %CustomerAccount{active_account(1_000) | pending_credits: %{"corr-1" => 400}}
+      event = %CreditCancelled{account_id: "acc-1", correlation_id: "corr-1", amount: 400}
+
+      assert %CustomerAccount{available_balance: 1_000, pending_credits: pending_credits} =
+               CustomerAccount.apply(account, event)
+
+      assert pending_credits == %{}
     end
   end
 

@@ -6,6 +6,7 @@ defmodule Accounts.CustomerAccount do
   alias Accounts.Commands.ActivateCustomerAccount
   alias Accounts.Commands.AuthorizeCredit
   alias Accounts.Commands.BlockCustomerAccount
+  alias Accounts.Commands.CancelCredit
   alias Accounts.Commands.CloseCustomerAccount
   alias Accounts.Commands.ConfirmReservation
   alias Accounts.Commands.FreezeCustomerAccount
@@ -19,6 +20,7 @@ defmodule Accounts.CustomerAccount do
   alias Accounts.Events.BalanceReservationRejected
   alias Accounts.Events.BalanceReserved
   alias Accounts.Events.CreditAuthorized
+  alias Accounts.Events.CreditCancelled
   alias Accounts.Events.CreditPosted
   alias Accounts.Events.CreditRejected
   alias Accounts.Events.CustomerAccountActivated
@@ -35,6 +37,7 @@ defmodule Accounts.CustomerAccount do
     :status,
     available_balance: 0,
     reservations: %{},
+    pending_credits: %{},
     posted_credits: MapSet.new()
   ]
 
@@ -89,8 +92,9 @@ defmodule Accounts.CustomerAccount do
     end
   end
 
-  def execute(%__MODULE__{status: status}, %CloseCustomerAccount{} = command) do
-    with :ok <- guard(status, command) do
+  def execute(%__MODULE__{status: status} = account, %CloseCustomerAccount{} = command) do
+    with :ok <- guard(status, command),
+         :ok <- check_closure(account) do
       %CustomerAccountClosed{account_id: command.account_id}
     end
   end
@@ -177,6 +181,19 @@ defmodule Accounts.CustomerAccount do
     end
   end
 
+  # README, D4: a redelivered cancellation for a settled credit does nothing.
+  def execute(%__MODULE__{pending_credits: pending}, %CancelCredit{correlation_id: id})
+      when not is_map_key(pending, id),
+      do: []
+
+  def execute(%__MODULE__{} = account, %CancelCredit{} = command) do
+    %CreditCancelled{
+      account_id: command.account_id,
+      correlation_id: command.correlation_id,
+      amount: Map.fetch!(account.pending_credits, command.correlation_id)
+    }
+  end
+
   def apply(%__MODULE__{} = account, %CustomerAccountOpened{} = event) do
     %__MODULE__{account | account_id: event.account_id, status: :pending_kyc}
   end
@@ -215,14 +232,27 @@ defmodule Accounts.CustomerAccount do
 
   def apply(%__MODULE__{} = account, %BalanceReservationRejected{}), do: account
 
-  def apply(%__MODULE__{} = account, %CreditAuthorized{}), do: account
+  def apply(%__MODULE__{} = account, %CreditAuthorized{} = event) do
+    %__MODULE__{
+      account
+      | pending_credits: Map.put(account.pending_credits, event.correlation_id, event.amount)
+    }
+  end
 
   def apply(%__MODULE__{} = account, %CreditRejected{}), do: account
+
+  def apply(%__MODULE__{} = account, %CreditCancelled{} = event) do
+    %__MODULE__{
+      account
+      | pending_credits: Map.delete(account.pending_credits, event.correlation_id)
+    }
+  end
 
   def apply(%__MODULE__{} = account, %CreditPosted{} = event) do
     %__MODULE__{
       account
       | available_balance: account.available_balance + event.amount,
+        pending_credits: Map.delete(account.pending_credits, event.correlation_id),
         posted_credits: MapSet.put(account.posted_credits, event.correlation_id)
     }
   end
@@ -244,6 +274,16 @@ defmodule Accounts.CustomerAccount do
       not valid_amount?(amount) -> {:error, :invalid_amount}
       account.status not in @can_send -> {:error, :account_not_active}
       amount > account.available_balance -> {:error, :insufficient_balance}
+      true -> :ok
+    end
+  end
+
+  # README, H6: an account closes empty.
+  defp check_closure(account) do
+    cond do
+      account.available_balance > 0 -> {:error, :balance_not_zero}
+      map_size(account.reservations) > 0 -> {:error, :open_reservations}
+      map_size(account.pending_credits) > 0 -> {:error, :pending_credits}
       true -> :ok
     end
   end
