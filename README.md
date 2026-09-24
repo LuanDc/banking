@@ -405,8 +405,8 @@ that contract. The dependency runs one way only (D3, D5).
 | Command | Aggregate | Success event | Rejection event | Invariant |
 | --- | --- | --- | --- | --- |
 | `BookTransactionBatch` ⊕ | `TransactionBatch` | `LedgerBatchBooked` | `LedgerBatchRejected` ⊕ | sum DEBIT = sum CREDIT, entries only to `OPEN` ledger accounts |
-| `OpenLedgerAccount` ⊕ | `LedgerAccount` ⊕ | `LedgerAccountOpened` ⊕ | account already exists | — |
-| `CloseLedgerAccount` ⊕ | `LedgerAccount` ⊕ | `LedgerAccountClosed` ⊕ | rejected | state = `OPEN` |
+| `OpenLedgerAccount` ⊕ | `LedgerAccount` ⊕ | `LedgerAccountOpened` ⊕ | — (an existing account ignores it, D4) | — |
+| `CloseLedgerAccount` ⊕ | `LedgerAccount` ⊕ | `LedgerAccountClosed` ⊕ | account not found (a closed account ignores it, D4) | state = `OPEN` |
 
 ### Policies
 
