@@ -9,7 +9,25 @@ defmodule Ledger.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      test_coverage: [tool: ExCoveralls],
+      dialyzer: [
+        plt_file: {:no_warn, "priv/plts/project.plt"},
+        ignore_warnings: ".dialyzer_ignore.exs",
+        plt_add_apps: [:mix, :ex_unit]
+      ]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.html": :test,
+        "coveralls.json": :test,
+        "coveralls.post": :test
+      ]
     ]
   end
 
@@ -40,7 +58,19 @@ defmodule Ledger.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.1.1"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+
+      # Static analysis & security
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:sobelow, "~> 0.15.0", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
+
+      # Testing
+      {:excoveralls, "~> 0.18.5", only: :test},
+      {:ex_machina, "~> 2.8", only: :test},
+      {:faker, "~> 0.19.0", only: [:dev, :test]},
+      {:mox, "~> 1.3", only: :test}
     ]
   end
 
@@ -55,7 +85,15 @@ defmodule Ledger.MixProject do
       setup: ["deps.get", "ecto.setup"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
-      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"]
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
+      quality: [
+        "format --check-formatted",
+        "compile --warnings-as-errors",
+        "credo --strict",
+        "sobelow --config",
+        "deps.audit",
+        "dialyzer"
+      ]
     ]
   end
 end

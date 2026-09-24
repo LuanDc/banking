@@ -28,6 +28,7 @@ defmodule LedgerWeb.ConnCase do
       import Plug.Conn
       import Phoenix.ConnTest
       import LedgerWeb.ConnCase
+      import Ledger.Factory
     end
   end
 

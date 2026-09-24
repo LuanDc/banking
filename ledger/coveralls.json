@@ -1,0 +1,12 @@
+{
+  "coverage_options": {
+    "treat_no_relevant_lines_as_covered": true,
+    "minimum_coverage": 0
+  },
+  "skip_files": [
+    "test/support",
+    "lib/ledger/application.ex",
+    "lib/ledger_web.ex",
+    "lib/ledger_web/telemetry.ex"
+  ]
+}
