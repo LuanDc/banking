@@ -452,9 +452,11 @@ Each service has the same setup: Phoenix API, Ecto for the read models, Commande
 Postgres event store in its own database (`<App>.App`, `<App>.EventStore`), and the `mix quality`
 gate. Only `CustomerAccount` exists so far; the rest of the tree is where each piece goes.
 
-**An aggregate's rules live in the aggregate.** The FSM transition matrix is a module attribute
-of `CustomerAccount`, next to the commands it guards, rather than a separate `state_machine.ex`,
-so every rule of the aggregate reads from one file.
+**An aggregate's rules live in the aggregate.** The FSM guards are a module attribute of
+`CustomerAccount`, next to the commands they guard, rather than a separate `state_machine.ex`, so
+every rule of the aggregate reads from one file. They are keyed by command — the statuses each
+command may run from, as in the Guard column of section 7 — not by target status: `Activate` and
+`Unblock` both lead to `ACTIVE`, but from different statuses.
 
 **Suggested implementation order:** the `CustomerAccount` FSM → the `TransactionBatch` double-entry
 invariant → `LedgerRouter` wiring the two together → projections → the compensation paths.
