@@ -236,6 +236,13 @@ defmodule Accounts.CustomerAccountTest do
                CustomerAccount.execute(with_reservation(), command)
     end
 
+    test "confirms on a frozen account: a transfer in flight finishes (H5)" do
+      frozen = %CustomerAccount{with_reservation() | status: :frozen}
+      command = %ConfirmReservation{account_id: "acc-1", correlation_id: "corr-1"}
+
+      assert %ReservationConfirmed{amount: 400} = CustomerAccount.execute(frozen, command)
+    end
+
     test "ignores a reservation that is not open, e.g. one already confirmed" do
       command = %ConfirmReservation{account_id: "acc-1", correlation_id: "corr-9"}
 
@@ -249,6 +256,13 @@ defmodule Accounts.CustomerAccountTest do
 
       assert %BalanceReleased{account_id: "acc-1", correlation_id: "corr-1", amount: 400} =
                CustomerAccount.execute(with_reservation(), command)
+    end
+
+    test "releases on a frozen account: a transfer in flight finishes (H5)" do
+      frozen = %CustomerAccount{with_reservation() | status: :frozen}
+      command = %ReleaseBalance{account_id: "acc-1", correlation_id: "corr-1"}
+
+      assert %BalanceReleased{amount: 400} = CustomerAccount.execute(frozen, command)
     end
 
     test "ignores a reservation that is not open, e.g. one already released" do
@@ -309,7 +323,7 @@ defmodule Accounts.CustomerAccountTest do
       assert [] = post_credit(account, 400)
     end
 
-    test "posts a booked credit whatever the status: it mirrors what the Ledger already booked" do
+    test "posts a booked credit whatever the status: it mirrors what the Ledger already booked (H5)" do
       frozen = %CustomerAccount{active_account(0) | status: :frozen}
 
       assert %CreditPosted{amount: 400} = post_credit(frozen, 400)
