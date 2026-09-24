@@ -8,8 +8,11 @@ defmodule Accounts.CustomerAccount do
   alias Accounts.Commands.CloseCustomerAccount
   alias Accounts.Commands.FreezeCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
+  alias Accounts.Commands.ReserveBalance
   alias Accounts.Commands.UnblockCustomerAccount
   alias Accounts.Commands.UnfreezeCustomerAccount
+  alias Accounts.Events.BalanceReservationRejected
+  alias Accounts.Events.BalanceReserved
   alias Accounts.Events.CustomerAccountActivated
   alias Accounts.Events.CustomerAccountBlocked
   alias Accounts.Events.CustomerAccountClosed
@@ -18,7 +21,7 @@ defmodule Accounts.CustomerAccount do
   alias Accounts.Events.CustomerAccountUnblocked
   alias Accounts.Events.CustomerAccountUnfrozen
 
-  defstruct [:account_id, :status]
+  defstruct [:account_id, :status, available_balance: 0]
 
   # Statuses each command may run from (README, sections 3.1 and 7).
   # The status it leads to is set by the event's apply/2.
@@ -73,6 +76,25 @@ defmodule Accounts.CustomerAccount do
     end
   end
 
+  def execute(%__MODULE__{} = account, %ReserveBalance{} = command) do
+    case check_reservation(account, command.amount) do
+      :ok ->
+        %BalanceReserved{
+          account_id: command.account_id,
+          amount: command.amount,
+          correlation_id: command.correlation_id
+        }
+
+      {:error, reason} ->
+        %BalanceReservationRejected{
+          account_id: command.account_id,
+          amount: command.amount,
+          correlation_id: command.correlation_id,
+          reason: reason
+        }
+    end
+  end
+
   def apply(%__MODULE__{} = account, %CustomerAccountOpened{} = event) do
     %__MODULE__{account | account_id: event.account_id, status: :pending_kyc}
   end
@@ -100,6 +122,25 @@ defmodule Accounts.CustomerAccount do
   def apply(%__MODULE__{} = account, %CustomerAccountClosed{}) do
     %__MODULE__{account | status: :closed}
   end
+
+  def apply(%__MODULE__{} = account, %BalanceReserved{} = event) do
+    %__MODULE__{account | available_balance: account.available_balance - event.amount}
+  end
+
+  def apply(%__MODULE__{} = account, %BalanceReservationRejected{}), do: account
+
+  # README, section 3.1: only an ACTIVE account may send money.
+  defp check_reservation(account, amount) do
+    cond do
+      not valid_amount?(amount) -> {:error, :invalid_amount}
+      account.status != :active -> {:error, :account_not_active}
+      amount > account.available_balance -> {:error, :insufficient_balance}
+      true -> :ok
+    end
+  end
+
+  # README, D1: money is an integer number of cents.
+  defp valid_amount?(amount), do: is_integer(amount) and amount > 0
 
   defp guard(status, %command{}) do
     if status in Map.fetch!(@allowed_from, command), do: :ok, else: {:error, :invalid_transition}
