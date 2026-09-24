@@ -3,11 +3,13 @@ defmodule Accounts.CustomerAccountTest do
 
   alias Accounts.Commands.ActivateCustomerAccount
   alias Accounts.Commands.BlockCustomerAccount
+  alias Accounts.Commands.FreezeCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
   alias Accounts.Commands.UnblockCustomerAccount
   alias Accounts.CustomerAccount
   alias Accounts.Events.CustomerAccountActivated
   alias Accounts.Events.CustomerAccountBlocked
+  alias Accounts.Events.CustomerAccountFrozen
   alias Accounts.Events.CustomerAccountOpened
   alias Accounts.Events.CustomerAccountUnblocked
 
@@ -85,6 +87,23 @@ defmodule Accounts.CustomerAccountTest do
     end
   end
 
+  describe "FreezeCustomerAccount" do
+    test "emits CustomerAccountFrozen for an active account" do
+      account = %CustomerAccount{account_id: "acc-1", status: :active}
+      command = %FreezeCustomerAccount{account_id: "acc-1", reason: "court order"}
+
+      assert %CustomerAccountFrozen{account_id: "acc-1", reason: "court order"} =
+               CustomerAccount.execute(account, command)
+    end
+
+    test "rejects a blocked account" do
+      account = %CustomerAccount{account_id: "acc-1", status: :blocked}
+      command = %FreezeCustomerAccount{account_id: "acc-1", reason: "court order"}
+
+      assert {:error, :invalid_transition} = CustomerAccount.execute(account, command)
+    end
+  end
+
   describe "applying CustomerAccountOpened" do
     test "moves the account to pending KYC" do
       event = %CustomerAccountOpened{account_id: "acc-1", customer_id: "cus-1"}
@@ -120,6 +139,16 @@ defmodule Accounts.CustomerAccountTest do
       event = %CustomerAccountUnblocked{account_id: "acc-1"}
 
       assert %CustomerAccount{account_id: "acc-1", status: :active} =
+               CustomerAccount.apply(account, event)
+    end
+  end
+
+  describe "applying CustomerAccountFrozen" do
+    test "moves the account to frozen" do
+      account = %CustomerAccount{account_id: "acc-1", status: :active}
+      event = %CustomerAccountFrozen{account_id: "acc-1", reason: "court order"}
+
+      assert %CustomerAccount{account_id: "acc-1", status: :frozen} =
                CustomerAccount.apply(account, event)
     end
   end
