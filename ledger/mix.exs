@@ -64,6 +64,7 @@ defmodule Ledger.MixProject do
       {:commanded, "~> 1.4"},
       {:commanded_eventstore_adapter, "~> 1.4"},
       {:eventstore, "~> 1.4"},
+      {:commanded_ecto_projections, "~> 1.4"},
 
       # Messaging
       {:broadway_rabbitmq, "~> 0.8.2"},
