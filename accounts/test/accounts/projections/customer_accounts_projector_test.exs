@@ -148,6 +148,18 @@ defmodule Accounts.Projections.CustomerAccountsProjectorTest do
     end
   end
 
+  test "a reset clears the read model, so the replay starts from scratch" do
+    open_account()
+    :ok = CustomerAccountsProjector.before_reset()
+
+    assert Repo.all(CustomerAccount) == []
+    assert Repo.all(StatusChange) == []
+
+    open_account()
+
+    assert [%CustomerAccount{account_id: "acc-1"}] = Repo.all(CustomerAccount)
+  end
+
   defp open_account do
     :ok =
       project(%CustomerAccountOpened{account_id: "acc-1", customer_id: "cus-1"}, 1, @opened_at)

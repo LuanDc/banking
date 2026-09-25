@@ -65,4 +65,20 @@ defmodule Accounts.Projections.CreditsProjector do
       on_conflict: {:replace, replace}
     )
   end
+
+  # `mix commanded.reset` calls this before replaying the event store from the origin (README,
+  # D11): the read model and its version start empty.
+  @impl Commanded.Event.Handler
+  def before_reset do
+    {:ok, _changes} =
+      Ecto.Multi.new()
+      |> Ecto.Multi.delete_all(:read_model, Credit)
+      |> Ecto.Multi.delete_all(
+        :projection_version,
+        from(v in ProjectionVersion, where: v.projection_name == "credits_projector")
+      )
+      |> Accounts.Repo.transaction()
+
+    :ok
+  end
 end

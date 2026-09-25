@@ -77,6 +77,17 @@ defmodule Accounts.Projections.CreditsProjectorTest do
     assert Repo.aggregate(Credit, :count) == 1
   end
 
+  test "a reset clears the read model, so the replay starts from scratch" do
+    authorize()
+    :ok = CreditsProjector.before_reset()
+
+    assert Repo.all(Credit) == []
+
+    authorize()
+
+    assert [%Credit{status: :authorized}] = Repo.all(Credit)
+  end
+
   defp authorize do
     event = %CreditAuthorized{account_id: "acc-1", correlation_id: "corr-1", amount: 400}
     :ok = project(event, 1, @authorized_at)

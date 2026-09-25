@@ -101,4 +101,21 @@ defmodule Accounts.Projections.CustomerAccountsProjector do
   end
 
   defp account(event), do: from(a in CustomerAccount, where: a.account_id == ^event.account_id)
+
+  # `mix commanded.reset` calls this before replaying the event store from the origin (README,
+  # D11): the read model and its version start empty.
+  @impl Commanded.Event.Handler
+  def before_reset do
+    {:ok, _changes} =
+      Ecto.Multi.new()
+      |> Ecto.Multi.delete_all(:status_changes, StatusChange)
+      |> Ecto.Multi.delete_all(:customer_accounts, CustomerAccount)
+      |> Ecto.Multi.delete_all(
+        :projection_version,
+        from(v in ProjectionVersion, where: v.projection_name == "customer_accounts_projector")
+      )
+      |> Accounts.Repo.transaction()
+
+    :ok
+  end
 end

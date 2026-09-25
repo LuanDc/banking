@@ -75,6 +75,17 @@ defmodule Accounts.Projections.ReservationsProjectorTest do
     assert Repo.aggregate(Reservation, :count) == 1
   end
 
+  test "a reset clears the read model, so the replay starts from scratch" do
+    reserve()
+    :ok = ReservationsProjector.before_reset()
+
+    assert Repo.all(Reservation) == []
+
+    reserve()
+
+    assert [%Reservation{status: :open}] = Repo.all(Reservation)
+  end
+
   defp rejected do
     %BalanceReservationRejected{
       account_id: "acc-1",
