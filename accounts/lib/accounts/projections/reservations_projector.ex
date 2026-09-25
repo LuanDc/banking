@@ -1,0 +1,66 @@
+defmodule Accounts.Projections.ReservationsProjector do
+  @moduledoc """
+  Projects balance reservations into `reservations` (README, section 7). A settled reservation
+  keeps its row, with the way it settled, as a trail of the transfer saga.
+  """
+
+  use Commanded.Projections.Ecto,
+    application: Accounts.App,
+    repo: Accounts.Repo,
+    name: "reservations_projector"
+
+  alias Accounts.Events.BalanceReleased
+  alias Accounts.Events.BalanceReservationRejected
+  alias Accounts.Events.BalanceReserved
+  alias Accounts.Events.ReservationConfirmed
+  alias Accounts.Projections.Reservation
+
+  project(%BalanceReserved{} = event, metadata, fn multi ->
+    upsert(multi, %Reservation{
+      account_id: event.account_id,
+      correlation_id: event.correlation_id,
+      amount: event.amount,
+      status: :open,
+      reserved_at: metadata.created_at
+    })
+  end)
+
+  project(%BalanceReservationRejected{} = event, metadata, fn multi ->
+    upsert(multi, %Reservation{
+      account_id: event.account_id,
+      correlation_id: event.correlation_id,
+      amount: event.amount,
+      status: :rejected,
+      reason: to_string(event.reason),
+      reserved_at: metadata.created_at
+    })
+  end)
+
+  # The aggregate keeps no trace of a rejection, so a redelivered or retried ReserveBalance
+  # decides again under the same correlation_id: the latest decision replaces the row.
+  defp upsert(multi, reservation) do
+    Ecto.Multi.insert(multi, :reservation, reservation,
+      conflict_target: [:account_id, :correlation_id],
+      on_conflict: {:replace, [:amount, :status, :reason, :reserved_at, :settled_at]}
+    )
+  end
+
+  project(%ReservationConfirmed{} = event, metadata, fn multi ->
+    settle(multi, event, metadata, :confirmed)
+  end)
+
+  project(%BalanceReleased{} = event, metadata, fn multi ->
+    settle(multi, event, metadata, :released)
+  end)
+
+  defp settle(multi, event, metadata, status) do
+    Ecto.Multi.update_all(
+      multi,
+      :reservation,
+      from(r in Reservation,
+        where: r.account_id == ^event.account_id and r.correlation_id == ^event.correlation_id
+      ),
+      set: [status: status, settled_at: metadata.created_at]
+    )
+  end
+end
