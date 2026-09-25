@@ -3,5 +3,5 @@ defmodule Accounts.Commands.ReserveBalance do
   Intent to hold an amount, in cents, of the available balance for an outbound transfer.
   """
 
-  defstruct [:account_id, :amount, :correlation_id]
+  defstruct [:account_id, :amount, :correlation_id, :to_account_id]
 end

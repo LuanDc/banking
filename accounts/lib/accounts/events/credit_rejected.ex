@@ -5,7 +5,7 @@ defmodule Accounts.Events.CreditRejected do
   """
 
   @derive Jason.Encoder
-  defstruct [:account_id, :amount, :correlation_id, :reason]
+  defstruct [:account_id, :amount, :correlation_id, :reason, :from_account_id]
 
   defimpl Commanded.Serialization.JsonDecoder do
     # JSON has no atoms: the reason comes back from the event store as a string.

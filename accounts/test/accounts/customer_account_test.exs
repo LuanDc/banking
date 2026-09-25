@@ -242,7 +242,12 @@ defmodule Accounts.CustomerAccountTest do
     test "emits BalanceReserved for an active account with enough available balance" do
       account = %CustomerAccount{account_id: "acc-1", status: :active, available_balance: 1_000}
 
-      command = %ReserveBalance{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
+      command = %ReserveBalance{
+        account_id: "acc-1",
+        amount: 400,
+        correlation_id: "corr-1",
+        to_account_id: "acc-2"
+      }
 
       assert %BalanceReserved{account_id: "acc-1", amount: 400, correlation_id: "corr-1"} =
                CustomerAccount.execute(account, command)
@@ -255,6 +260,44 @@ defmodule Accounts.CustomerAccountTest do
                correlation_id: "corr-1",
                reason: :insufficient_balance
              } = reserve(active_account(1_000), 1_001)
+    end
+
+    test "carries the destination, so the saga knows whom to credit" do
+      assert %BalanceReserved{to_account_id: "acc-2"} = reserve(active_account(1_000), 400)
+
+      assert %BalanceReservationRejected{to_account_id: "acc-2"} =
+               reserve(active_account(100), 400)
+    end
+
+    test "rejects a transfer to the account itself" do
+      command = %ReserveBalance{
+        account_id: "acc-1",
+        amount: 400,
+        correlation_id: "corr-1",
+        to_account_id: "acc-1"
+      }
+
+      assert %BalanceReservationRejected{reason: :same_account} =
+               CustomerAccount.execute(active_account(1_000), command)
+    end
+
+    test "rejects a transfer with no destination" do
+      for to_account_id <- [nil, ""] do
+        command = %ReserveBalance{
+          account_id: "acc-1",
+          amount: 400,
+          correlation_id: "corr-1",
+          to_account_id: to_account_id
+        }
+
+        assert %BalanceReservationRejected{reason: :invalid_destination} =
+                 CustomerAccount.execute(active_account(1_000), command)
+      end
+    end
+
+    test "rejects an account that was never opened as not found" do
+      assert %BalanceReservationRejected{reason: :account_not_found} =
+               reserve(%CustomerAccount{}, 400)
     end
 
     test "reserves the whole available balance" do
@@ -365,6 +408,19 @@ defmodule Accounts.CustomerAccountTest do
     test "emits CreditAuthorized for an active account" do
       assert %CreditAuthorized{account_id: "acc-1", amount: 400, correlation_id: "corr-1"} =
                authorize_credit(active_account(0), 400)
+    end
+
+    test "carries the source, so the saga knows whom to compensate" do
+      assert %CreditAuthorized{from_account_id: "acc-2"} =
+               authorize_credit(active_account(0), 400)
+
+      frozen = %CustomerAccount{active_account(0) | status: :frozen}
+      assert %CreditRejected{from_account_id: "acc-2"} = authorize_credit(frozen, 400)
+    end
+
+    test "rejects an account that was never opened as not found" do
+      assert %CreditRejected{reason: :account_not_found} =
+               authorize_credit(%CustomerAccount{}, 400)
     end
 
     test "emits CreditAuthorized for a blocked account, which may receive money but not send it" do
@@ -663,7 +719,13 @@ defmodule Accounts.CustomerAccountTest do
     do: %CustomerAccount{active_account(600) | reservations: %{"corr-1" => 400}}
 
   defp authorize_credit(account, amount) do
-    command = %AuthorizeCredit{account_id: "acc-1", amount: amount, correlation_id: "corr-1"}
+    command = %AuthorizeCredit{
+      account_id: "acc-1",
+      amount: amount,
+      correlation_id: "corr-1",
+      from_account_id: "acc-2"
+    }
+
     CustomerAccount.execute(account, command)
   end
 
@@ -673,7 +735,13 @@ defmodule Accounts.CustomerAccountTest do
   end
 
   defp reserve(account, amount) do
-    command = %ReserveBalance{account_id: "acc-1", amount: amount, correlation_id: "corr-1"}
+    command = %ReserveBalance{
+      account_id: "acc-1",
+      amount: amount,
+      correlation_id: "corr-1",
+      to_account_id: "acc-2"
+    }
+
     CustomerAccount.execute(account, command)
   end
 end

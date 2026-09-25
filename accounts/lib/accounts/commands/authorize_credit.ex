@@ -4,5 +4,5 @@ defmodule Accounts.Commands.AuthorizeCredit do
   books a transfer into it.
   """
 
-  defstruct [:account_id, :amount, :correlation_id]
+  defstruct [:account_id, :amount, :correlation_id, :from_account_id]
 end

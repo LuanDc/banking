@@ -14,21 +14,33 @@ defmodule Accounts.EventsSerializationTest do
     %Events.CustomerAccountFrozen{account_id: "acc-1", reason: "court order"},
     %Events.CustomerAccountUnfrozen{account_id: "acc-1"},
     %Events.CustomerAccountClosed{account_id: "acc-1"},
-    %Events.BalanceReserved{account_id: "acc-1", amount: 400, correlation_id: "corr-1"},
+    %Events.BalanceReserved{
+      account_id: "acc-1",
+      amount: 400,
+      correlation_id: "corr-1",
+      to_account_id: "acc-2"
+    },
     %Events.BalanceReservationRejected{
       account_id: "acc-1",
       amount: 400,
       correlation_id: "corr-1",
-      reason: :insufficient_balance
+      reason: :insufficient_balance,
+      to_account_id: "acc-2"
     },
     %Events.ReservationConfirmed{account_id: "acc-1", correlation_id: "corr-1", amount: 400},
     %Events.BalanceReleased{account_id: "acc-1", correlation_id: "corr-1", amount: 400},
-    %Events.CreditAuthorized{account_id: "acc-1", amount: 400, correlation_id: "corr-1"},
+    %Events.CreditAuthorized{
+      account_id: "acc-1",
+      amount: 400,
+      correlation_id: "corr-1",
+      from_account_id: "acc-2"
+    },
     %Events.CreditRejected{
       account_id: "acc-1",
       amount: 400,
       correlation_id: "corr-1",
-      reason: :credit_not_allowed
+      reason: :credit_not_allowed,
+      from_account_id: "acc-2"
     },
     %Events.CreditPosted{account_id: "acc-1", amount: 400, correlation_id: "corr-1"},
     %Events.CreditCancelled{account_id: "acc-1", correlation_id: "corr-1", amount: 400}

@@ -253,12 +253,13 @@ defmodule Accounts.CustomerAccount do
   end
 
   defp decide_reservation(account, command) do
-    case check_reservation(account, command.amount) do
+    case check_reservation(account, command) do
       :ok ->
         %BalanceReserved{
           account_id: command.account_id,
           amount: command.amount,
-          correlation_id: command.correlation_id
+          correlation_id: command.correlation_id,
+          to_account_id: command.to_account_id
         }
 
       {:error, reason} ->
@@ -266,16 +267,20 @@ defmodule Accounts.CustomerAccount do
           account_id: command.account_id,
           amount: command.amount,
           correlation_id: command.correlation_id,
-          reason: reason
+          reason: reason,
+          to_account_id: command.to_account_id
         }
     end
   end
 
-  defp check_reservation(account, amount) do
+  defp check_reservation(account, command) do
     cond do
-      not valid_amount?(amount) -> {:error, :invalid_amount}
+      not valid_amount?(command.amount) -> {:error, :invalid_amount}
+      command.to_account_id in [nil, ""] -> {:error, :invalid_destination}
+      command.to_account_id == command.account_id -> {:error, :same_account}
+      account.status == nil -> {:error, :account_not_found}
       account.status not in @can_send -> {:error, :account_not_active}
-      amount > account.available_balance -> {:error, :insufficient_balance}
+      command.amount > account.available_balance -> {:error, :insufficient_balance}
       true -> :ok
     end
   end
@@ -296,7 +301,8 @@ defmodule Accounts.CustomerAccount do
         %CreditAuthorized{
           account_id: command.account_id,
           amount: command.amount,
-          correlation_id: command.correlation_id
+          correlation_id: command.correlation_id,
+          from_account_id: command.from_account_id
         }
 
       {:error, reason} ->
@@ -304,7 +310,8 @@ defmodule Accounts.CustomerAccount do
           account_id: command.account_id,
           amount: command.amount,
           correlation_id: command.correlation_id,
-          reason: reason
+          reason: reason,
+          from_account_id: command.from_account_id
         }
     end
   end
@@ -312,6 +319,7 @@ defmodule Accounts.CustomerAccount do
   defp check_credit(account, amount) do
     cond do
       not valid_amount?(amount) -> {:error, :invalid_amount}
+      account.status == nil -> {:error, :account_not_found}
       account.status not in @can_receive -> {:error, :credit_not_allowed}
       true -> :ok
     end
