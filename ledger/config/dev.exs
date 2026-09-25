@@ -31,7 +31,8 @@ config :ledger, Ledger.Messaging.CommandsConsumer, url: "amqp://banking:banking@
 config :ledger, LedgerWeb.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
-  http: [ip: {127, 0, 0, 1}, port: 4000],
+  # 4001, so it runs next to accounts (4000) — see the servers in openapi.yaml.
+  http: [ip: {127, 0, 0, 1}, port: 4001],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
