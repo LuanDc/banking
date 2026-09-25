@@ -51,4 +51,20 @@ defmodule Ledger.Projections.BalancesProjector do
     |> Enum.map(& &1.amount)
     |> Enum.sum()
   end
+
+  # `mix commanded.reset` calls this before replaying the event store from the origin (README,
+  # D11): the read model and its version start empty.
+  @impl Commanded.Event.Handler
+  def before_reset do
+    {:ok, _changes} =
+      Ecto.Multi.new()
+      |> Ecto.Multi.delete_all(:read_model, AccountBalance)
+      |> Ecto.Multi.delete_all(
+        :projection_version,
+        from(v in ProjectionVersion, where: v.projection_name == "balances_projector")
+      )
+      |> Ledger.Repo.transaction()
+
+    :ok
+  end
 end

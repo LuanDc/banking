@@ -32,6 +32,17 @@ defmodule Ledger.Projections.LedgerAccountsProjectorTest do
     assert [%LedgerAccount{account_id: "acc-1"}] = Repo.all(LedgerAccount)
   end
 
+  test "a reset clears the read model, so the replay starts from scratch" do
+    :ok = project(%LedgerAccountOpened{account_id: "acc-1"}, 1, @opened_at)
+    :ok = LedgerAccountsProjector.before_reset()
+
+    assert Repo.all(LedgerAccount) == []
+
+    :ok = project(%LedgerAccountOpened{account_id: "acc-1"}, 1, @opened_at)
+
+    assert [%LedgerAccount{account_id: "acc-1"}] = Repo.all(LedgerAccount)
+  end
+
   defp project(event, event_number, created_at) do
     LedgerAccountsProjector.handle(event, %{
       handler_name: "ledger_accounts_projector",

@@ -33,6 +33,17 @@ defmodule Ledger.Projections.StatementProjectorTest do
     assert Repo.aggregate(StatementEntry, :count) == 2
   end
 
+  test "a reset clears the read model, so the replay starts from scratch" do
+    :ok = project(booked_batch(), 1)
+    :ok = StatementProjector.before_reset()
+
+    assert Repo.all(StatementEntry) == []
+
+    :ok = project(booked_batch(), 1)
+
+    assert Repo.aggregate(StatementEntry, :count) == 2
+  end
+
   defp booked_batch do
     %LedgerBatchBooked{
       batch_id: "batch-1",

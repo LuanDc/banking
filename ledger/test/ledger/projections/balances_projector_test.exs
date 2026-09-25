@@ -42,6 +42,18 @@ defmodule Ledger.Projections.BalancesProjectorTest do
     assert %AccountBalance{credit_total: 1_000} = Repo.get(AccountBalance, "acc-1")
   end
 
+  test "a reset clears the read model, so the replay starts from scratch" do
+    event = batch("batch-1", [debit("pix", 1_000), credit("acc-1", 1_000)])
+    :ok = project(event, 1)
+    :ok = BalancesProjector.before_reset()
+
+    assert Repo.all(AccountBalance) == []
+
+    :ok = project(event, 1)
+
+    assert %AccountBalance{credit_total: 1_000} = Repo.get(AccountBalance, "acc-1")
+  end
+
   defp batch(batch_id, entries) do
     %LedgerBatchBooked{batch_id: batch_id, correlation_id: "corr-" <> batch_id, entries: entries}
   end
