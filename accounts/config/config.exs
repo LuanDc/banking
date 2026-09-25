@@ -20,6 +20,10 @@ config :accounts, Accounts.App,
     event_store: Accounts.EventStore
   ]
 
+# Messages to the Ledger go to the queue it owns, through RabbitMQ (README, D3 and D10).
+config :accounts, Accounts.Messaging.Publisher, adapter: Accounts.Messaging.RabbitMQPublisher
+config :accounts, Accounts.Messaging.RabbitMQPublisher, queue: "ledger.commands"
+
 # Configures the endpoint
 config :accounts, AccountsWeb.Endpoint,
   url: [host: "localhost"],

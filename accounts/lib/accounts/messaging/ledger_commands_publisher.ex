@@ -4,9 +4,6 @@ defmodule Accounts.Messaging.LedgerCommandsPublisher do
 
   It reads the event store through a durable subscription, so the event store is the outbox:
   an event is acknowledged only after its message was published.
-
-  Not supervised yet: it joins `Accounts.Application` together with the RabbitMQ adapter of
-  `Accounts.Messaging.Publisher`, so no event is consumed before there is somewhere to send it.
   """
 
   use Commanded.Event.Handler,

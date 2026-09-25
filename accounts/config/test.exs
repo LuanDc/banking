@@ -23,6 +23,13 @@ config :accounts, Accounts.EventStore,
   database: "accounts_eventstore_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool_size: 2
 
+# RabbitMQ from docker-compose.yml, used only by the publisher's integration tests. The
+# messaging processes are not started in test, so no event handler publishes on its own.
+config :accounts, Accounts.Messaging.RabbitMQPublisher,
+  url: "amqp://banking:banking@localhost:5672"
+
+config :accounts, start_messaging: false
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :accounts, AccountsWeb.Endpoint,

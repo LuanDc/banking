@@ -7,22 +7,34 @@ defmodule Accounts.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      AccountsWeb.Telemetry,
-      Accounts.Repo,
-      {DNSCluster, query: Application.get_env(:accounts, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: Accounts.PubSub},
-      Accounts.App,
-      # Start a worker by calling: Accounts.Worker.start_link(arg)
-      # {Accounts.Worker, arg},
-      # Start to serve requests, typically the last entry
-      AccountsWeb.Endpoint
-    ]
+    children =
+      [
+        AccountsWeb.Telemetry,
+        Accounts.Repo,
+        {DNSCluster, query: Application.get_env(:accounts, :dns_cluster_query) || :ignore},
+        {Phoenix.PubSub, name: Accounts.PubSub},
+        Accounts.App
+      ] ++
+        messaging_children() ++
+        [
+          # Start to serve requests, typically the last entry
+          AccountsWeb.Endpoint
+        ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Accounts.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # The RabbitMQ connection, then the handler that publishes through it (README, D3). Tests
+  # turn them off, so no handler consumes the event store on its own.
+  defp messaging_children do
+    if Application.get_env(:accounts, :start_messaging, true) do
+      [Accounts.Messaging.RabbitMQPublisher, Accounts.Messaging.LedgerCommandsPublisher]
+    else
+      []
+    end
   end
 
   # Tell Phoenix to update the endpoint configuration

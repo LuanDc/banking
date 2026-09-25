@@ -19,6 +19,10 @@ config :accounts, Accounts.EventStore,
   database: "accounts_eventstore_dev",
   pool_size: 10
 
+# RabbitMQ from docker-compose.yml.
+config :accounts, Accounts.Messaging.RabbitMQPublisher,
+  url: "amqp://banking:banking@localhost:5672"
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

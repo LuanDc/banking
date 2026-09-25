@@ -65,6 +65,9 @@ defmodule Accounts.MixProject do
       {:commanded_eventstore_adapter, "~> 1.4"},
       {:eventstore, "~> 1.4"},
 
+      # Messaging
+      {:amqp, "~> 4.2"},
+
       # Static analysis & security
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
