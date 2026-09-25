@@ -32,7 +32,11 @@ defmodule Accounts.Application do
   # turn them off, so no projector consumes the shared test event store on its own.
   defp projection_children do
     if Application.get_env(:accounts, :start_projections, true) do
-      [Accounts.Projections.CustomerAccountsProjector, Accounts.Projections.ReservationsProjector]
+      [
+        Accounts.Projections.CustomerAccountsProjector,
+        Accounts.Projections.ReservationsProjector,
+        Accounts.Projections.CreditsProjector
+      ]
     else
       []
     end
