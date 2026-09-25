@@ -26,6 +26,9 @@ config :ledger, Ledger.EventStore,
 # The commands pipeline runs without a broker: tests feed it with Broadway.test_message/3.
 config :ledger, Ledger.Messaging.CommandsConsumer, producer: {Broadway.DummyProducer, []}
 
+# Projectors are called directly in tests: the event store has no sandbox.
+config :ledger, start_projections: false
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :ledger, LedgerWeb.Endpoint,
