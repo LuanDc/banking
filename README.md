@@ -426,13 +426,17 @@ that contract. The dependency runs one way only (D3, D5).
 
 ### Read models
 
-| Projection | Fed by | Use |
-| --- | --- | --- |
-| `BalanceView` | `LedgerBatchBooked` | queryable balance per account |
-| `AccountStatusView` ⊕ | lifecycle events | FSM status and history |
-| `ReservationsView` ⊕ | `BalanceReserved`, `ReservationConfirmed`, `BalanceReleased` | open reservations, available balance |
-| `StatementView` ⊕ | `LedgerBatchBooked` | statement per account |
-| `TrialBalanceView` ⊕ | `LedgerBatchBooked` | trial balance, proof of double entry |
+Each table has a single owning projector (D11).
+
+| Projection | Service · table | Projector | Fed by | Use |
+| --- | --- | --- | --- | --- |
+| `AccountStatusView` ⊕ | Accounts · `customer_accounts`, `customer_account_status_changes` | `CustomerAccountsProjector` | lifecycle events, plus `BalanceReserved`, `BalanceReleased`, `CreditPosted` | FSM status and history, available balance |
+| `ReservationsView` ⊕ | Accounts · `reservations` | `ReservationsProjector` | `BalanceReserved`, `BalanceReservationRejected`, `ReservationConfirmed`, `BalanceReleased` | every reservation and how it settled |
+| `CreditsView` ⊕ | Accounts · `credits` | `CreditsProjector` | `CreditAuthorized`, `CreditRejected`, `CreditPosted`, `CreditCancelled` | pending credits (D8) and how each settled |
+| `LedgerAccountsView` ⊕ | Ledger · `ledger_accounts` | `LedgerAccountsProjector` (strong consistency) | `LedgerAccountOpened`, `LedgerAccountClosed` | open ledger accounts, for the D5 check |
+| `BalanceView` | Ledger · `account_balances` | `BalancesProjector` | `LedgerBatchBooked` | debit and credit totals and balance per account |
+| `StatementView` ⊕ | Ledger · `ledger_entries` | `StatementProjector` | `LedgerBatchBooked` | statement per account |
+| `TrialBalanceView` ⊕ | Ledger · `trial_balance` (SQL view) | — | `account_balances` | trial balance, proof of double entry |
 
 ---
 
@@ -449,7 +453,7 @@ Red sticky notes raised during modeling. Each one is worth an invariant test onc
 | H5 | **Freezing with an open reservation.** `FreezeCustomerAccount` during an in-flight saga: abort it or let it finish? | Affects the guards on `ConfirmReservation`. **Resolved → D7.** |
 | H6 | **Residual balance at closure.** Does `CloseCustomerAccount` require a zero balance, or does it generate a transfer entry? | A terminal state holding a balance breaks reconciliation. **Resolved → D8.** |
 | H7 | **Reversals.** An accounting batch is immutable — is a reversal a new, inverted batch? | Determines whether `LedgerBatchReversed` exists. **Model decided, implementation deferred → D9.** |
-| H8 | **Projection failure.** `LedgerBatchBooked` written but `BalanceView` stale. | Needs projection replay and lag monitoring. |
+| H8 | **Projection failure.** `LedgerBatchBooked` written but `BalanceView` stale. | Needs projection replay and lag monitoring. **Replay resolved → D11; lag monitoring still open.** |
 | H9 | **Event transport between services.** `accounts` and `ledger` have separate event stores, so Commanded's PubSub does not carry `BalanceReserved` or `LedgerBatchBooked` across. Broker, outbox, or a subscription to the other event store? | Nothing crosses the Context Map until this is decided — it blocks `LedgerRouter` and the saga in section 5. **Resolved → D3.** |
 
 ---
@@ -469,7 +473,7 @@ accounts/                          # Account Management Context
     ├── events/                    # 🟧 events (section 7)
     ├── process_managers/
     │   └── ledger_router.ex       # 🟪 transfer saga: credit authorization, booking, compensation
-    └── projections/               # 🟩 AccountStatusView, ReservationsView
+    └── projections/               # 🟩 AccountStatusView, ReservationsView, CreditsView
 
 ledger/                            # Ledger Context
 └── lib/ledger/
@@ -477,18 +481,19 @@ ledger/                            # Ledger Context
     ├── ledger_account.ex          # 🟨 aggregate: OPEN · CLOSED (D5)
     ├── ledger_entry.ex            # DEBIT/CREDIT value object
     ├── commands/ · events/        # 🟦 🟧
-    └── projections/               # 🟩 BalanceView, StatementView, TrialBalanceView
+    └── projections/               # 🟩 LedgerAccountsView, BalanceView, StatementView, TrialBalanceView
 ```
 
 Each service has the same setup: Phoenix API, Ecto for the read models, Commanded with a
 Postgres event store in its own database (`<App>.App`, `<App>.EventStore`), and the `mix quality`
-gate. `CustomerAccount` and `TransactionBatch` exist so far; the rest of the tree is where each
-piece goes.
+gate. The aggregates, the message transport and the projections exist so far; the
+`LedgerRouter` saga is still to come.
 
-**An aggregate's rules live in the aggregate.** The FSM guards are a module attribute of
-`CustomerAccount`, next to the commands they guard, rather than a separate `state_machine.ex`, so
-every rule of the aggregate reads from one file. They are keyed by command — the statuses each
-command may run from, as in the Guard column of section 7 — not by target status: `Activate` and
+**An aggregate's rules live in the aggregate.** The FSM is a transition table in
+`CustomerAccount`, `{from status, event} => to status`, next to the commands it guards, rather than
+a separate `state_machine.ex`, so every rule of the aggregate reads from one file. `execute/2`
+emits an event only when it is a transition out of the current status, and `apply/2` follows the
+same entry to the next status. Keying by event and not by target status matters: `Activate` and
 `Unblock` both lead to `ACTIVE`, but from different statuses.
 
 **Suggested implementation order:** the `CustomerAccount` FSM → the `TransactionBatch` double-entry
@@ -637,3 +642,41 @@ key.
 
 Sending to a queue that does not exist yet fails and is retried, so `Accounts` can start before
 `Ledger` without losing messages.
+
+### D11 · Projections read their own event store, never RabbitMQ
+
+Each service projects only its own events, from its own event store into its own read-model
+database. RabbitMQ stays for messages between contexts (D3).
+
+```
+Accounts.EventStore ──┬─> LedgerCommandsPublisher ──> RabbitMQ   (outbox, D3)
+                      ├─> CustomerAccountsProjector ──> accounts_dev
+                      ├─> ReservationsProjector     ──> accounts_dev
+                      └─> CreditsProjector          ──> accounts_dev
+```
+
+- The publisher and each projector are **independent** durable subscriptions to the same event
+  store: a broker outage does not stall the read models, and a broken projection does not stall
+  the saga.
+- Projectors use `commanded_ecto_projections`: each event's `Ecto.Multi` runs in the same
+  transaction that records the last event seen in `projection_versions`, so a redelivered event
+  is projected once.
+- **Each table has a single owning projector**, and there are no foreign keys between tables of
+  different projectors, so any read model can be rebuilt on its own.
+- **Rebuilding (H8):** `mix commanded.reset --app <App> --handler <name>`, run inside the node
+  where the projector runs. The projector's `before_reset/0` empties its tables and its
+  `projection_versions` row, then the subscription replays from the origin. The subscription's
+  position lives in the event store, so deleting rows alone replays nothing.
+- Events carry no timestamp: the `*_at` columns come from the event's `created_at` metadata.
+- A decision the aggregate does not remember — a rejected `ReserveBalance`, an `AuthorizeCredit` —
+  is decided again when redelivered, with a new event under the same `correlation_id`. Those
+  projections upsert by `(account_id, correlation_id)`, and the latest decision wins.
+- `ledger_accounts` is strongly consistent: a command dispatched with `consistency: :strong`
+  returns only once the account shows up, which the D5 check will rely on.
+- `account_balances` keeps both totals, and the balance is a generated column
+  `credit_total - debit_total`, so no sign convention per kind of account is needed: the PIX
+  settlement account goes negative, a customer's account positive. `trial_balance` is a SQL view
+  over it rather than another copy of the data.
+- Tests call each projector directly at the `DataCase` layer; the projector processes do not
+  start in the test environment (`start_projections: false`), because the test event store is
+  shared.
