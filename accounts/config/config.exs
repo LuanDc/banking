@@ -24,6 +24,14 @@ config :accounts, Accounts.App,
 config :accounts, Accounts.Messaging.Publisher, adapter: Accounts.Messaging.RabbitMQPublisher
 config :accounts, Accounts.Messaging.RabbitMQPublisher, queue: "ledger.commands"
 
+# The Ledger's events arrive on a queue Accounts owns, bound to the exchange the Ledger publishes
+# to; a message that fails is dead-lettered instead of requeued (README, D3 and D10).
+config :accounts, Accounts.Messaging.LedgerEventsConsumer,
+  exchange: "ledger.events",
+  routing_key: "ledger.batch.*",
+  queue: "accounts.ledger-events",
+  dead_letter_queue: "accounts.ledger-events.dead"
+
 # Configures the endpoint
 config :accounts, AccountsWeb.Endpoint,
   url: [host: "localhost"],

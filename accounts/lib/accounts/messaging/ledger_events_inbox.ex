@@ -1,0 +1,71 @@
+defmodule Accounts.Messaging.LedgerEventsInbox do
+  @moduledoc """
+  Entry point for the Ledger's events (README, D3), the answers to the batches Accounts sent.
+
+  The Ledger defines the event contract. A message is a decoded JSON map with the event `type`
+  and its `payload`; the inbox turns it into the commands of the saga's last step, one per
+  customer account the batch touched, and dispatches them:
+
+    * `LedgerBatchBooked` confirms each debited reservation and posts each credit.
+    * `LedgerBatchRejected` releases each debited reservation and cancels each pending credit.
+
+  The bank's own accounts are left out: no `CustomerAccount` stands behind them. Every command is
+  idempotent by `correlation_id` (D4), so a redelivered event changes nothing.
+  """
+
+  alias Accounts.App
+  alias Accounts.BankAccounts
+  alias Accounts.Commands.CancelCredit
+  alias Accounts.Commands.ConfirmReservation
+  alias Accounts.Commands.PostCredit
+  alias Accounts.Commands.ReleaseBalance
+
+  def handle(message) do
+    with {:ok, commands} <- to_commands(message) do
+      Enum.reduce_while(commands, :ok, &dispatch/2)
+    end
+  end
+
+  def to_commands(%{"type" => "LedgerBatchBooked", "payload" => payload}) do
+    {:ok, commands(payload, &booked/2)}
+  end
+
+  def to_commands(%{"type" => "LedgerBatchRejected", "payload" => payload}) do
+    {:ok, commands(payload, &rejected/2)}
+  end
+
+  def to_commands(_message), do: {:error, :unknown_event}
+
+  defp dispatch(command, :ok) do
+    case App.dispatch(command) do
+      :ok -> {:cont, :ok}
+      error -> {:halt, error}
+    end
+  end
+
+  defp commands(payload, command_for) do
+    payload["entries"]
+    |> Enum.reject(&BankAccounts.bank_account?(&1["account_id"]))
+    |> Enum.map(&command_for.(&1, payload["correlation_id"]))
+  end
+
+  defp booked(%{"type" => "debit"} = entry, correlation_id) do
+    %ConfirmReservation{account_id: entry["account_id"], correlation_id: correlation_id}
+  end
+
+  defp booked(%{"type" => "credit"} = entry, correlation_id) do
+    %PostCredit{
+      account_id: entry["account_id"],
+      amount: entry["amount"],
+      correlation_id: correlation_id
+    }
+  end
+
+  defp rejected(%{"type" => "debit"} = entry, correlation_id) do
+    %ReleaseBalance{account_id: entry["account_id"], correlation_id: correlation_id}
+  end
+
+  defp rejected(%{"type" => "credit"} = entry, correlation_id) do
+    %CancelCredit{account_id: entry["account_id"], correlation_id: correlation_id}
+  end
+end

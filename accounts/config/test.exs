@@ -30,6 +30,9 @@ config :accounts, Accounts.Messaging.RabbitMQPublisher,
 
 config :accounts, start_messaging: false
 
+# The Ledger's events come from Broadway.DummyProducer, fed by the consumer's tests.
+config :accounts, Accounts.Messaging.LedgerEventsConsumer, producer: {Broadway.DummyProducer, []}
+
 # Projectors are called directly in tests: the event store has no sandbox.
 config :accounts, start_projections: false
 

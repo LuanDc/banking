@@ -69,6 +69,7 @@ defmodule Accounts.MixProject do
 
       # Messaging
       {:amqp, "~> 4.2"},
+      {:broadway_rabbitmq, "~> 0.8.2"},
 
       # Static analysis & security
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

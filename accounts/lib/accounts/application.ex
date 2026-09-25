@@ -16,6 +16,10 @@ defmodule Accounts.Application do
         Accounts.App
       ] ++
         projection_children() ++
+        [
+          # The Ledger's events, dispatched through Accounts.App (README, D3).
+          Accounts.Messaging.LedgerEventsConsumer
+        ] ++
         messaging_children() ++
         policy_children() ++
         [

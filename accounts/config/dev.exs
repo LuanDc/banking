@@ -20,6 +20,9 @@ config :accounts, Accounts.EventStore,
   pool_size: 10
 
 # RabbitMQ from docker-compose.yml.
+config :accounts, Accounts.Messaging.LedgerEventsConsumer,
+  url: "amqp://banking:banking@localhost:5672"
+
 config :accounts, Accounts.Messaging.RabbitMQPublisher,
   url: "amqp://banking:banking@localhost:5672"
 
