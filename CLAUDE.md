@@ -27,10 +27,18 @@ decision before changing its area.
     Elixir.
   - When an endpoint changes, update the YAML first, then the controller test, then the
     controller.
-  - Every controller test validates its response against the YAML (`assert_schema`), and a
-    route-coverage test compares the router with the spec's `paths`.
+  - Every controller test validates its response against the YAML with
+    `assert_response_schema(conn, status)` (`test/support/api_spec.ex`, JSV). The
+    `api_spec_test.exs` test requires the router to serve exactly the spec's operations; an
+    operation not built yet is marked `x-planned: true`.
   - Lint the spec with `npx @redocly/cli@1 lint <service>/openapi.yaml`.
   - Swagger UI: `docker compose up -d`, then http://localhost:8080.
+- **Controllers call only the context entry point** (`Accounts.CustomerAccounts`,
+  `Ledger.LedgerAccounts`, `Ledger.TransactionBatches`). It builds commands from the params with
+  ExConstructor (`use ExConstructor` in the command, `Command.new(params)`), dispatches them, and
+  holds the read-model queries.
+- Break a pipe into one step per line, starting from the value on its own line (`params`, then
+  `|> Command.new()`, then `|> App.dispatch()`), even when it would fit on one.
 - Money is an integer number of cents (D1). Consumers deduplicate by `correlation_id` (D4).
 
 ## Local setup

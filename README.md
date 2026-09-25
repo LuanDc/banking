@@ -703,9 +703,22 @@ Accounts.EventStore ──┬─> LedgerCommandsPublisher ──> RabbitMQ   (ou
 
 ### D12 · The HTTP API: people send commands to Accounts, and the Ledger is read-only
 
-The proposed endpoints are OpenAPI 3.1 specs, one per service: `accounts/openapi.yaml` and
+The API is described by OpenAPI 3.1 specs, one per service: `accounts/openapi.yaml` and
 `ledger/openapi.yaml`. `docker compose up -d` serves both at http://localhost:8080 (Swagger UI).
-None of these endpoints is implemented yet.
+The specs are written by hand and are the source of truth; nothing generates them from code.
+Operations marked `x-planned: true` (the transfers, which wait for the `LedgerRouter` saga) are
+not built yet.
+
+- **Contract tests.**
+  - Every controller test calls `assert_response_schema(conn, status)`. The helper finds the
+    operation through the Phoenix route and checks that the spec documents the status. It then
+    validates the body against that operation's schema with JSV, which supports JSON Schema
+    2020-12 and therefore OpenAPI 3.1.
+  - A second test requires the router to serve exactly the spec's operations, apart from the
+    planned ones.
+- **Controllers call a context entry point:** `Accounts.CustomerAccounts`,
+  `Ledger.LedgerAccounts`, `Ledger.TransactionBatches`. The context builds each command from the
+  request params with ExConstructor, dispatches it, and runs the read-model queries.
 
 - **Only commands a person starts are exposed:** opening an account, the back-office lifecycle
   transitions (`POST /api/accounts/{id}/block`, `/freeze`, …), and `POST /api/transfers`. Saga
