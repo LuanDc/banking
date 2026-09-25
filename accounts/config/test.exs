@@ -35,3 +35,6 @@ config :logger, level: :warning
 
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
+
+# Messages to other services go through a Mox mock of the publisher port.
+config :accounts, Accounts.Messaging.Publisher, adapter: Accounts.Messaging.PublisherMock
