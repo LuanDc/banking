@@ -2,6 +2,9 @@ defmodule Accounts.Projections.CustomerAccountsProjector do
   @moduledoc """
   Projects the lifecycle of customer accounts into `customer_accounts` and their FSM history
   into `customer_account_status_changes` (README, section 7).
+
+  It also mirrors the aggregate's available balance (README, D2): posted credits raise it,
+  reservations hold it and released reservations give it back.
   """
 
   use Commanded.Projections.Ecto,
@@ -9,6 +12,9 @@ defmodule Accounts.Projections.CustomerAccountsProjector do
     repo: Accounts.Repo,
     name: "customer_accounts_projector"
 
+  alias Accounts.Events.BalanceReleased
+  alias Accounts.Events.BalanceReserved
+  alias Accounts.Events.CreditPosted
   alias Accounts.Events.CustomerAccountActivated
   alias Accounts.Events.CustomerAccountBlocked
   alias Accounts.Events.CustomerAccountClosed
@@ -56,6 +62,25 @@ defmodule Accounts.Projections.CustomerAccountsProjector do
     |> change_status(event, metadata, :closed, nil)
     |> Ecto.Multi.update_all(:closed_at, account(event), set: [closed_at: metadata.created_at])
   end)
+
+  project(%CreditPosted{} = event, metadata, fn multi ->
+    change_balance(multi, event, metadata, event.amount)
+  end)
+
+  project(%BalanceReserved{} = event, metadata, fn multi ->
+    change_balance(multi, event, metadata, -event.amount)
+  end)
+
+  project(%BalanceReleased{} = event, metadata, fn multi ->
+    change_balance(multi, event, metadata, event.amount)
+  end)
+
+  defp change_balance(multi, event, metadata, delta) do
+    Ecto.Multi.update_all(multi, :customer_account, account(event),
+      inc: [available_balance: delta],
+      set: [updated_at: metadata.created_at]
+    )
+  end
 
   defp change_status(multi, event, metadata, status, reason) do
     multi

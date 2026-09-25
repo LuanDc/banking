@@ -2,6 +2,9 @@ defmodule Accounts.Projections.CustomerAccountsProjectorTest do
   # Not async: every test writes the same row of projection_versions.
   use Accounts.DataCase, async: false
 
+  alias Accounts.Events.BalanceReleased
+  alias Accounts.Events.BalanceReserved
+  alias Accounts.Events.CreditPosted
   alias Accounts.Events.CustomerAccountActivated
   alias Accounts.Events.CustomerAccountBlocked
   alias Accounts.Events.CustomerAccountClosed
@@ -117,6 +120,32 @@ defmodule Accounts.Projections.CustomerAccountsProjectorTest do
                occurred_at: @changed_at
              }
            ] = Repo.all(from c in StatusChange, order_by: c.id)
+  end
+
+  describe "available balance" do
+    test "a posted credit raises it" do
+      open_account()
+      :ok = project(%CreditPosted{account_id: "acc-1", amount: 1_000, correlation_id: "c-1"}, 2)
+
+      assert %CustomerAccount{available_balance: 1_000} = Repo.get(CustomerAccount, "acc-1")
+    end
+
+    test "a reservation holds it" do
+      open_account()
+      :ok = project(%CreditPosted{account_id: "acc-1", amount: 1_000, correlation_id: "c-1"}, 2)
+      :ok = project(%BalanceReserved{account_id: "acc-1", amount: 400, correlation_id: "c-2"}, 3)
+
+      assert %CustomerAccount{available_balance: 600} = Repo.get(CustomerAccount, "acc-1")
+    end
+
+    test "a released reservation gives it back" do
+      open_account()
+      :ok = project(%CreditPosted{account_id: "acc-1", amount: 1_000, correlation_id: "c-1"}, 2)
+      :ok = project(%BalanceReserved{account_id: "acc-1", amount: 400, correlation_id: "c-2"}, 3)
+      :ok = project(%BalanceReleased{account_id: "acc-1", amount: 400, correlation_id: "c-2"}, 4)
+
+      assert %CustomerAccount{available_balance: 1_000} = Repo.get(CustomerAccount, "acc-1")
+    end
   end
 
   defp open_account do
