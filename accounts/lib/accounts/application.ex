@@ -15,6 +15,7 @@ defmodule Accounts.Application do
         {Phoenix.PubSub, name: Accounts.PubSub},
         Accounts.App
       ] ++
+        projection_children() ++
         messaging_children() ++
         [
           # Start to serve requests, typically the last entry
@@ -25,6 +26,16 @@ defmodule Accounts.Application do
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Accounts.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  # The read models, each fed by its own subscription to the event store (README, D11). Tests
+  # turn them off, so no projector consumes the shared test event store on its own.
+  defp projection_children do
+    if Application.get_env(:accounts, :start_projections, true) do
+      [Accounts.Projections.CustomerAccountsProjector]
+    else
+      []
+    end
   end
 
   # The RabbitMQ connection, then the handler that publishes through it (README, D3). Tests
