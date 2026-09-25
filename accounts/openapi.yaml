@@ -84,6 +84,7 @@ paths:
                   data:
                     type: array
                     items: { $ref: "#/components/schemas/CustomerAccount" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
 
   /api/accounts/{account_id}:
     parameters:
@@ -313,6 +314,7 @@ paths:
                       data:
                         items: { $ref: "#/components/schemas/Reservation" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
 
   /api/accounts/{account_id}/credits:
     parameters:
@@ -340,6 +342,7 @@ paths:
                       data:
                         items: { $ref: "#/components/schemas/Credit" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
 
 components:
   parameters:
@@ -390,8 +393,8 @@ components:
             errors: { code: invalid_transition, detail: The account cannot make this transition from its current status. }
     ValidationFailed:
       description: |
-        A required field is missing or blank. `code` is `customer_id_required` or
-        `reason_required`.
+        A required field is missing or blank, or a query parameter is invalid. `code` is
+        `customer_id_required`, `reason_required` or `invalid_query`.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }

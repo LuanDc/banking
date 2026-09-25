@@ -14,6 +14,18 @@ defmodule AccountsWeb.AccountController do
     end
   end
 
+  def index(conn, params) do
+    with {:ok, accounts} <- CustomerAccounts.list_customer_accounts(params) do
+      render(conn, :index, accounts: accounts)
+    end
+  end
+
+  def status_history(conn, %{"account_id" => account_id}) do
+    with {:ok, changes} <- CustomerAccounts.list_status_changes(account_id) do
+      render(conn, :status_history, changes: changes)
+    end
+  end
+
   def show(conn, %{"account_id" => account_id}) do
     with {:ok, account} <- CustomerAccounts.get_customer_account(account_id) do
       render(conn, :show, account: account)

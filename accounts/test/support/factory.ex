@@ -27,7 +27,8 @@ defmodule Accounts.Factory do
 
   def status_change_factory do
     %StatusChange{
-      account_id: Ecto.UUID.generate(),
+      # The history references its account: both belong to CustomerAccountsProjector.
+      account_id: fn -> insert(:customer_account).account_id end,
       event: "CustomerAccountOpened",
       status: :pending_kyc,
       occurred_at: DateTime.utc_now()

@@ -14,7 +14,8 @@ defmodule AccountsWeb.FallbackController do
     open_reservations: :conflict,
     pending_credits: :conflict,
     customer_id_required: :unprocessable_entity,
-    reason_required: :unprocessable_entity
+    reason_required: :unprocessable_entity,
+    invalid_query: :unprocessable_entity
   }
 
   @details %{
@@ -25,7 +26,8 @@ defmodule AccountsWeb.FallbackController do
     open_reservations: "The account has open reservations.",
     pending_credits: "The account has pending credits.",
     customer_id_required: "A customer_id is required.",
-    reason_required: "A reason is required."
+    reason_required: "A reason is required.",
+    invalid_query: "A query parameter is invalid."
   }
 
   def call(conn, {:error, reason}) when is_map_key(@statuses, reason) do

@@ -8,8 +8,12 @@ defmodule AccountsWeb.Router do
   scope "/api", AccountsWeb do
     pipe_through :api
 
+    get "/accounts", AccountController, :index
     post "/accounts", AccountController, :create
     get "/accounts/:account_id", AccountController, :show
+    get "/accounts/:account_id/status-history", AccountController, :status_history
+    get "/accounts/:account_id/reservations", ReservationController, :index
+    get "/accounts/:account_id/credits", CreditController, :index
 
     post "/accounts/:account_id/activate", LifecycleController, :activate
     post "/accounts/:account_id/block", LifecycleController, :block
