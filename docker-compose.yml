@@ -47,6 +47,22 @@ services:
       timeout: 10s
       retries: 10
 
+  # Proposed HTTP APIs of both services (OpenAPI 3.1), one spec each, picked from
+  # the dropdown: http://localhost:8080. The specs are mounted, so a reload shows
+  # an edit. "Try it out" calls the services on 4000 (accounts) and 4001 (ledger),
+  # which need CORS for the 8080 origin once the endpoints exist.
+  swagger-ui:
+    image: swaggerapi/swagger-ui:v5.17.14
+    environment:
+      URLS: >-
+        [{"name": "Accounts", "url": "/specs/accounts.yaml"},
+         {"name": "Ledger", "url": "/specs/ledger.yaml"}]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./accounts/openapi.yaml:/usr/share/nginx/html/specs/accounts.yaml:ro
+      - ./ledger/openapi.yaml:/usr/share/nginx/html/specs/ledger.yaml:ro
+
 volumes:
   postgres-data:
   rabbitmq-data:

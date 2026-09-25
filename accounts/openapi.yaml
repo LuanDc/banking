@@ -1,0 +1,518 @@
+openapi: 3.1.0
+info:
+  title: Accounts API
+  version: 0.1.0
+  description: |
+    Proposed HTTP API of the Account Management Context (README, section 3). **None of these
+    endpoints exists yet.**
+
+    - **Commands** are the ones a person starts: opening an account, back-office lifecycle
+      transitions, and transfers. Saga steps (`ReserveBalance`, `AuthorizeCredit`,
+      `ConfirmReservation`, `ReleaseBalance`, `PostCredit`, `CancelCredit`) are not exposed. They
+      come from the `LedgerRouter` saga and from RabbitMQ (D3).
+    - **Queries** read the read models (D11). These are eventually consistent: a read right after
+      a command may not see it yet.
+    - Money is an integer number of cents in BRL (D1).
+servers:
+  - url: http://localhost:4000
+    description: Local development (`mix phx.server` in accounts/)
+# No authentication is modeled yet.
+security: []
+tags:
+  - name: Accounts
+    description: Open accounts and read their status (AccountStatusView).
+  - name: Lifecycle
+    description: Back-office FSM transitions (README, section 3.1).
+  - name: Transfers
+    description: TransferMoney, the saga in section 5.
+  - name: Reservations and credits
+    description: ReservationsView and CreditsView.
+
+paths:
+  /api/accounts:
+    post:
+      tags: [Accounts]
+      operationId: openCustomerAccount
+      summary: Open a customer account
+      description: |
+        Dispatches `OpenCustomerAccount` with a server-generated `account_id`. The account starts
+        in `pending_kyc`. The outbox then sends `OpenLedgerAccount` to the Ledger (D5).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id]
+              properties:
+                customer_id: { $ref: "#/components/schemas/Id" }
+      responses:
+        "201":
+          description: Account opened.
+          headers:
+            Location:
+              schema: { type: string, example: /api/accounts/3f0c6f0e-6d8e-4b8e-9a51-1c2f0a3b7e21 }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [account_id, customer_id, status]
+                properties:
+                  account_id: { $ref: "#/components/schemas/Id" }
+                  customer_id: { $ref: "#/components/schemas/Id" }
+                  status: { const: pending_kyc }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+    get:
+      tags: [Accounts]
+      operationId: listCustomerAccounts
+      summary: List a customer's accounts
+      parameters:
+        - name: customer_id
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/Id" }
+      responses:
+        "200":
+          description: The customer's accounts, in any status.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/CustomerAccount" }
+
+  /api/accounts/{account_id}:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      tags: [Accounts]
+      operationId: getCustomerAccount
+      summary: Get an account's status and available balance
+      responses:
+        "200":
+          description: The account, from `customer_accounts`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CustomerAccount" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/accounts/{account_id}/status-history:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      tags: [Accounts]
+      operationId: getStatusHistory
+      summary: List the account's FSM transitions, oldest first
+      responses:
+        "200":
+          description: One entry per lifecycle event, from `customer_account_status_changes`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/StatusChange" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/accounts/{account_id}/activate:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    post:
+      tags: [Lifecycle]
+      operationId: activateCustomerAccount
+      summary: Activate the account after KYC (pending_kyc → active)
+      description: |
+        Back-office path. Normally a KYC approval triggers this through the anticorruption layer
+        (section 7, policies).
+      responses:
+        "204": { $ref: "#/components/responses/Transitioned" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/InvalidTransition" }
+
+  /api/accounts/{account_id}/block:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    post:
+      tags: [Lifecycle]
+      operationId: blockCustomerAccount
+      summary: Block the account (active → blocked)
+      description: A blocked account can still receive money but cannot send it (section 3.1).
+      requestBody: { $ref: "#/components/requestBodies/Reason" }
+      responses:
+        "204": { $ref: "#/components/responses/Transitioned" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/InvalidTransition" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /api/accounts/{account_id}/unblock:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    post:
+      tags: [Lifecycle]
+      operationId: unblockCustomerAccount
+      summary: Unblock the account (blocked → active)
+      responses:
+        "204": { $ref: "#/components/responses/Transitioned" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/InvalidTransition" }
+
+  /api/accounts/{account_id}/freeze:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    post:
+      tags: [Lifecycle]
+      operationId: freezeCustomerAccount
+      summary: Freeze the account (active → frozen)
+      description: A transfer already in flight is allowed to finish (D7).
+      requestBody: { $ref: "#/components/requestBodies/Reason" }
+      responses:
+        "204": { $ref: "#/components/responses/Transitioned" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/InvalidTransition" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /api/accounts/{account_id}/unfreeze:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    post:
+      tags: [Lifecycle]
+      operationId: unfreezeCustomerAccount
+      summary: Unfreeze the account (frozen → active)
+      responses:
+        "204": { $ref: "#/components/responses/Transitioned" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/InvalidTransition" }
+
+  /api/accounts/{account_id}/close:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    post:
+      tags: [Lifecycle]
+      operationId: closeCustomerAccount
+      summary: Close the account (active | blocked → closed)
+      description: |
+        The account must be empty: zero available balance, no open reservation and no pending
+        credit (D8). The outbox then sends `CloseLedgerAccount` to the Ledger (D5).
+      responses:
+        "204": { $ref: "#/components/responses/Transitioned" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            The transition is not allowed, or the account is not empty. `code` is one of
+            `invalid_transition`, `balance_not_zero`, `open_reservations` or `pending_credits`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                errors: { code: open_reservations, detail: The account has open reservations. }
+
+  /api/transfers:
+    post:
+      tags: [Transfers]
+      operationId: transferMoney
+      summary: Transfer money between two customer accounts
+      description: |
+        Starts the saga in section 5 by reserving the amount on the source account. The rest of
+        the saga (credit authorization, booking in the Ledger, confirmation or compensation) runs
+        asynchronously, so poll `GET /api/transfers/{correlation_id}` for the outcome.
+
+        The `Idempotency-Key` becomes the saga's `correlation_id` (D4). A repeated key starts
+        nothing new and returns the first request's outcome.
+
+        Requires the `LedgerRouter` saga, which is not implemented yet.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Client-generated key, used as the `correlation_id`.
+          schema: { $ref: "#/components/schemas/Id" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_account_id, to_account_id, amount]
+              properties:
+                from_account_id: { $ref: "#/components/schemas/Id" }
+                to_account_id: { $ref: "#/components/schemas/Id" }
+                amount: { $ref: "#/components/schemas/PositiveCents" }
+      responses:
+        "202":
+          description: Amount reserved and saga started.
+          headers:
+            Location:
+              schema: { type: string, example: /api/transfers/9b1f3c52-7a0d-4f7e-8f4e-2d6a1c0b9e33 }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transfer" }
+        "422":
+          description: |
+            Invalid request, or the reservation was rejected (`BalanceReservationRejected`).
+            `code` is one of `validation_failed`, `same_account`, `invalid_amount`,
+            `account_not_active` or `insufficient_balance`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                errors: { code: insufficient_balance, detail: The source account has insufficient balance. }
+
+  /api/transfers/{correlation_id}:
+    parameters:
+      - name: correlation_id
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/Id" }
+    get:
+      tags: [Transfers]
+      operationId: getTransfer
+      summary: Get a transfer's outcome
+      description: |
+        Built from the `reservations` and `credits` rows with this `correlation_id`. There is no
+        separate transfer read model.
+      responses:
+        "200":
+          description: The transfer.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transfer" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/accounts/{account_id}/reservations:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      tags: [Reservations and credits]
+      operationId: listReservations
+      summary: List the account's reservations, newest first
+      parameters:
+        - name: status
+          in: query
+          description: With `open`, this lists the balance held by transfers in flight (D6).
+          schema: { $ref: "#/components/schemas/ReservationStatus" }
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/After"
+      responses:
+        "200":
+          description: A page of reservations.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - properties:
+                      data:
+                        items: { $ref: "#/components/schemas/Reservation" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/accounts/{account_id}/credits:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      tags: [Reservations and credits]
+      operationId: listCredits
+      summary: List the account's credits, newest first
+      parameters:
+        - name: status
+          in: query
+          description: With `authorized`, this lists the pending credits that block closing (D8).
+          schema: { $ref: "#/components/schemas/CreditStatus" }
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/After"
+      responses:
+        "200":
+          description: A page of credits.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - properties:
+                      data:
+                        items: { $ref: "#/components/schemas/Credit" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  parameters:
+    AccountId:
+      name: account_id
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Id" }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    After:
+      name: after
+      in: query
+      description: The `next_cursor` from the previous page.
+      schema: { type: string }
+
+  requestBodies:
+    Reason:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [reason]
+            properties:
+              reason: { type: string, minLength: 1, example: suspected fraud }
+
+  responses:
+    Transitioned:
+      description: Transition recorded. The read models follow shortly after.
+    NotFound:
+      description: No account (or transfer) with that id.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            errors: { code: not_found, detail: Not Found }
+    InvalidTransition:
+      description: The FSM has no such transition from the current status (section 3.1).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            errors: { code: invalid_transition, detail: The account cannot make this transition from its current status. }
+    ValidationFailed:
+      description: The request body is missing a field or has an invalid one.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            errors: { code: validation_failed, detail: reason can't be blank }
+
+  schemas:
+    Id:
+      type: string
+      minLength: 1
+      example: 3f0c6f0e-6d8e-4b8e-9a51-1c2f0a3b7e21
+    Cents:
+      type: integer
+      format: int64
+      description: Amount in cents of BRL (D1). `1000` is 10.00 BRL.
+      example: 1000
+    PositiveCents:
+      allOf:
+        - $ref: "#/components/schemas/Cents"
+        - minimum: 1
+    Timestamp:
+      type: string
+      format: date-time
+      example: "2026-09-25T12:00:00.000000Z"
+    AccountStatus:
+      type: string
+      enum: [pending_kyc, active, blocked, frozen, closed]
+    CustomerAccount:
+      type: object
+      required: [account_id, customer_id, status, available_balance, opened_at, updated_at]
+      properties:
+        account_id: { $ref: "#/components/schemas/Id" }
+        customer_id: { $ref: "#/components/schemas/Id" }
+        status: { $ref: "#/components/schemas/AccountStatus" }
+        status_reason:
+          type: [string, "null"]
+          description: The reason given to block or freeze. It is cleared on unblock or unfreeze.
+        available_balance:
+          allOf:
+            - $ref: "#/components/schemas/Cents"
+          description: Ledger balance minus open reservations (D2).
+        opened_at: { $ref: "#/components/schemas/Timestamp" }
+        closed_at:
+          oneOf:
+            - $ref: "#/components/schemas/Timestamp"
+            - type: "null"
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    StatusChange:
+      type: object
+      required: [event, status, occurred_at]
+      properties:
+        event: { type: string, example: CustomerAccountBlocked }
+        status: { $ref: "#/components/schemas/AccountStatus" }
+        reason: { type: [string, "null"] }
+        occurred_at: { $ref: "#/components/schemas/Timestamp" }
+    ReservationStatus:
+      type: string
+      enum: [open, confirmed, released, rejected]
+    Reservation:
+      type: object
+      required: [correlation_id, amount, status, reserved_at]
+      properties:
+        correlation_id: { $ref: "#/components/schemas/Id" }
+        amount: { $ref: "#/components/schemas/Cents" }
+        status: { $ref: "#/components/schemas/ReservationStatus" }
+        reason:
+          type: [string, "null"]
+          description: Why the reservation was rejected.
+        reserved_at: { $ref: "#/components/schemas/Timestamp" }
+        settled_at:
+          oneOf:
+            - $ref: "#/components/schemas/Timestamp"
+            - type: "null"
+    CreditStatus:
+      type: string
+      enum: [authorized, posted, cancelled, rejected]
+    Credit:
+      type: object
+      required: [correlation_id, amount, status]
+      properties:
+        correlation_id: { $ref: "#/components/schemas/Id" }
+        amount: { $ref: "#/components/schemas/Cents" }
+        status: { $ref: "#/components/schemas/CreditStatus" }
+        reason:
+          type: [string, "null"]
+          description: Why the credit was rejected.
+        authorized_at:
+          description: Empty for a credit posted without authorization, such as an inbound PIX (D2).
+          oneOf:
+            - $ref: "#/components/schemas/Timestamp"
+            - type: "null"
+        settled_at:
+          oneOf:
+            - $ref: "#/components/schemas/Timestamp"
+            - type: "null"
+    Transfer:
+      type: object
+      required: [correlation_id, from_account_id, to_account_id, amount, status]
+      properties:
+        correlation_id: { $ref: "#/components/schemas/Id" }
+        from_account_id: { $ref: "#/components/schemas/Id" }
+        to_account_id: { $ref: "#/components/schemas/Id" }
+        amount: { $ref: "#/components/schemas/Cents" }
+        status:
+          type: string
+          enum: [pending, completed, failed]
+          description: |
+            `pending` while the reservation is open, `completed` once it is confirmed, and
+            `failed` once it is rejected or released.
+        reason:
+          type: [string, "null"]
+          description: Why the transfer failed, e.g. `insufficient_balance` or `credit_not_allowed`.
+    Page:
+      type: object
+      required: [data, next_cursor]
+      properties:
+        data:
+          type: array
+        next_cursor:
+          type: [string, "null"]
+          description: Pass as `after` for the next page. It is null on the last page.
+    Error:
+      type: object
+      required: [errors]
+      properties:
+        errors:
+          type: object
+          required: [code, detail]
+          properties:
+            code: { type: string, description: "Machine-readable reason, e.g. `invalid_transition`." }
+            detail: { type: string }

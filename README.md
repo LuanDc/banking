@@ -467,6 +467,7 @@ above requires.
 
 ```
 accounts/                          # Account Management Context
+├── openapi.yaml                   # proposed HTTP API (D12)
 └── lib/accounts/
     ├── customer_account.ex        # 🟨 aggregate: FSM, transition matrix (section 3.1) and guards
     ├── commands/                  # 🟦 commands (section 7)
@@ -480,6 +481,7 @@ accounts/                          # Account Management Context
     └── messaging/                 # RabbitMQ transport: publisher port, adapter, command contract
 
 ledger/                            # Ledger Context
+├── openapi.yaml                   # proposed HTTP API (D12)
 └── lib/ledger/
     ├── transaction_batch.ex       # 🟨 aggregate: D = C invariant (section 4.1)
     ├── ledger_account.ex          # 🟨 aggregate: OPEN · CLOSED (D5)
@@ -694,3 +696,24 @@ Accounts.EventStore ──┬─> LedgerCommandsPublisher ──> RabbitMQ   (ou
 - Tests call each projector directly at the `DataCase` layer; the projector processes do not
   start in the test environment (`start_projections: false`), because the test event store is
   shared.
+
+### D12 · The HTTP API: people send commands to Accounts, and the Ledger is read-only
+
+The proposed endpoints are OpenAPI 3.1 specs, one per service: `accounts/openapi.yaml` and
+`ledger/openapi.yaml`. `docker compose up -d` serves both at http://localhost:8080 (Swagger UI).
+None of these endpoints is implemented yet.
+
+- **Only commands a person starts are exposed:** opening an account, the back-office lifecycle
+  transitions (`POST /api/accounts/{id}/block`, `/freeze`, …), and `POST /api/transfers`. Saga
+  steps (`ReserveBalance`, `AuthorizeCredit`, `ConfirmReservation`, …) stay internal to the
+  saga and RabbitMQ.
+- **The Ledger has no write endpoint.** Its commands arrive only through its RabbitMQ contract
+  (D3, D10), so HTTP cannot book an entry around `Accounts`' rules (D5).
+- **A transfer's `Idempotency-Key` header is its `correlation_id`** (D4). A retried request
+  starts no second saga. The response is `202 Accepted`, and the outcome is read from
+  `GET /api/transfers/{correlation_id}`, which combines the `reservations` and `credits` rows.
+- **Queries read the read models (D11)**, so they are eventually consistent. A lifecycle command
+  returns `204` rather than the new state, which the read model may not show yet.
+- Errors extend Phoenix's shape: `{"errors": {"code": "invalid_transition", "detail": "…"}}`. An
+  FSM refusal is `409`, and a rejected reservation or invalid body is `422`.
+- In dev, `accounts` listens on 4000 and `ledger` on 4001, so both can run side by side.

@@ -1,0 +1,241 @@
+openapi: 3.1.0
+info:
+  title: Ledger API
+  version: 0.1.0
+  description: |
+    Proposed HTTP API of the Ledger Context (README, section 4). **None of these endpoints exists
+    yet.**
+
+    The API is read-only. The Ledger's commands (`OpenLedgerAccount`, `CloseLedgerAccount`,
+    `BookTransactionBatch`) arrive only through its RabbitMQ contract (D3, D10), so no entry is
+    booked over HTTP. Every response reads a read model (D11), which is eventually consistent.
+    Money is an integer number of cents in BRL (D1).
+servers:
+  - url: http://localhost:4001
+    description: Local development (`mix phx.server` in ledger/)
+# No authentication is modeled yet.
+security: []
+tags:
+  - name: Ledger accounts
+    description: LedgerAccountsView, BalanceView and StatementView.
+  - name: Batches
+    description: The entries of one booked batch.
+  - name: Trial balance
+    description: TrialBalanceView, the proof of double entry (section 4.1).
+
+paths:
+  /api/ledger-accounts/{account_id}:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      tags: [Ledger accounts]
+      operationId: getLedgerAccount
+      summary: Get a ledger account's status
+      responses:
+        "200":
+          description: The account, from `ledger_accounts`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LedgerAccount" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/ledger-accounts/{account_id}/balance:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      tags: [Ledger accounts]
+      operationId: getBalance
+      summary: Get a ledger account's debit and credit totals and balance
+      description: |
+        Read from `account_balances`. An open account with no entry yet returns zeros.
+      responses:
+        "200":
+          description: The balance.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Balance" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/ledger-accounts/{account_id}/entries:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    get:
+      tags: [Ledger accounts]
+      operationId: listEntries
+      summary: Get the account's statement, newest first
+      parameters:
+        - name: from
+          in: query
+          description: Include only entries booked at or after this instant.
+          schema: { $ref: "#/components/schemas/Timestamp" }
+        - name: to
+          in: query
+          description: Include only entries booked before this instant.
+          schema: { $ref: "#/components/schemas/Timestamp" }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: after
+          in: query
+          description: The `next_cursor` from the previous page.
+          schema: { type: string }
+      responses:
+        "200":
+          description: A page of entries, from `ledger_entries`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, next_cursor]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/StatementEntry" }
+                  next_cursor:
+                    type: [string, "null"]
+                    description: Pass as `after` for the next page. It is null on the last page.
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/batches/{batch_id}:
+    parameters:
+      - name: batch_id
+        in: path
+        required: true
+        schema: { $ref: "#/components/schemas/Id" }
+    get:
+      tags: [Batches]
+      operationId: getBatch
+      summary: Get a booked batch and its entries
+      description: |
+        Read from `ledger_entries`, ordered by position. A rejected batch books nothing and
+        returns 404.
+      responses:
+        "200":
+          description: The batch. Its debits equal its credits.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/trial-balance:
+    get:
+      tags: [Trial balance]
+      operationId: getTrialBalance
+      summary: Get the sum of every debit and every credit
+      description: Read from the `trial_balance` SQL view.
+      responses:
+        "200":
+          description: The trial balance. Its `balanced` field is always true unless a projection is broken (H8).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TrialBalance" }
+
+components:
+  parameters:
+    AccountId:
+      name: account_id
+      in: path
+      required: true
+      description: The same id as the customer account in Accounts, or the id of a bank account such as the PIX settlement account (D5).
+      schema: { $ref: "#/components/schemas/Id" }
+
+  responses:
+    NotFound:
+      description: No such account or batch.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            errors: { code: not_found, detail: Not Found }
+
+  schemas:
+    Id:
+      type: string
+      minLength: 1
+      example: 3f0c6f0e-6d8e-4b8e-9a51-1c2f0a3b7e21
+    Cents:
+      type: integer
+      format: int64
+      description: Amount in cents of BRL (D1). `1000` is 10.00 BRL.
+      example: 1000
+    Timestamp:
+      type: string
+      format: date-time
+      example: "2026-09-25T12:00:00.000000Z"
+    EntryType:
+      type: string
+      enum: [debit, credit]
+    LedgerAccount:
+      type: object
+      required: [account_id, status, opened_at]
+      properties:
+        account_id: { $ref: "#/components/schemas/Id" }
+        status: { type: string, enum: [open, closed] }
+        opened_at: { $ref: "#/components/schemas/Timestamp" }
+        closed_at:
+          oneOf:
+            - $ref: "#/components/schemas/Timestamp"
+            - type: "null"
+    Balance:
+      type: object
+      required: [account_id, debit_total, credit_total, balance]
+      properties:
+        account_id: { $ref: "#/components/schemas/Id" }
+        debit_total: { $ref: "#/components/schemas/Cents" }
+        credit_total: { $ref: "#/components/schemas/Cents" }
+        balance:
+          allOf:
+            - $ref: "#/components/schemas/Cents"
+          description: |
+            `credit_total - debit_total` (D11). A customer account is positive, and the PIX
+            settlement account is negative.
+        updated_at:
+          oneOf:
+            - $ref: "#/components/schemas/Timestamp"
+            - type: "null"
+    StatementEntry:
+      type: object
+      required: [batch_id, correlation_id, type, amount, booked_at]
+      properties:
+        batch_id: { $ref: "#/components/schemas/Id" }
+        correlation_id: { $ref: "#/components/schemas/Id" }
+        type: { $ref: "#/components/schemas/EntryType" }
+        amount: { $ref: "#/components/schemas/Cents" }
+        booked_at: { $ref: "#/components/schemas/Timestamp" }
+    Batch:
+      type: object
+      required: [batch_id, correlation_id, booked_at, entries]
+      properties:
+        batch_id: { $ref: "#/components/schemas/Id" }
+        correlation_id: { $ref: "#/components/schemas/Id" }
+        booked_at: { $ref: "#/components/schemas/Timestamp" }
+        entries:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            required: [position, account_id, type, amount]
+            properties:
+              position: { type: integer, minimum: 0 }
+              account_id: { $ref: "#/components/schemas/Id" }
+              type: { $ref: "#/components/schemas/EntryType" }
+              amount: { $ref: "#/components/schemas/Cents" }
+    TrialBalance:
+      type: object
+      required: [debit_total, credit_total, balanced]
+      properties:
+        debit_total: { $ref: "#/components/schemas/Cents" }
+        credit_total: { $ref: "#/components/schemas/Cents" }
+        balanced:
+          type: boolean
+          description: Whether `debit_total` equals `credit_total`.
+    Error:
+      type: object
+      required: [errors]
+      properties:
+        errors:
+          type: object
+          required: [code, detail]
+          properties:
+            code: { type: string }
+            detail: { type: string }
