@@ -70,6 +70,10 @@ defmodule Accounts.Messaging.RabbitMQPublisher do
   end
 
   defp connect(state) do
+    # The AMQP client parses the URL's auth mechanisms with list_to_existing_atom/1, and the
+    # atoms only exist once this module is loaded; in dev, modules load lazily.
+    Code.ensure_loaded!(:amqp_auth_mechanisms)
+
     with {:ok, connection} <- AMQP.Connection.open(state.url),
          {:ok, channel} <- AMQP.Channel.open(connection),
          :ok <- AMQP.Confirm.select(channel),
