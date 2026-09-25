@@ -18,6 +18,7 @@ defmodule Accounts.Handlers.Projectors.ReservationsProjectorTest do
     assert %Reservation{
              account_id: "acc-1",
              correlation_id: "corr-1",
+             to_account_id: "acc-2",
              amount: 400,
              status: :open,
              reserved_at: @reserved_at,
@@ -47,8 +48,12 @@ defmodule Accounts.Handlers.Projectors.ReservationsProjectorTest do
   test "a rejected reservation is recorded with its reason" do
     :ok = project(rejected(), 1, @reserved_at)
 
-    assert %Reservation{status: :rejected, reason: "insufficient_balance", settled_at: nil} =
-             Repo.one(Reservation)
+    assert %Reservation{
+             status: :rejected,
+             reason: "insufficient_balance",
+             to_account_id: "acc-2",
+             settled_at: nil
+           } = Repo.one(Reservation)
   end
 
   test "a redelivered reservation is projected only once" do
@@ -74,12 +79,19 @@ defmodule Accounts.Handlers.Projectors.ReservationsProjectorTest do
       account_id: "acc-1",
       correlation_id: "corr-1",
       amount: 400,
-      reason: :insufficient_balance
+      reason: :insufficient_balance,
+      to_account_id: "acc-2"
     }
   end
 
   defp reserve do
-    event = %BalanceReserved{account_id: "acc-1", correlation_id: "corr-1", amount: 400}
+    event = %BalanceReserved{
+      account_id: "acc-1",
+      correlation_id: "corr-1",
+      amount: 400,
+      to_account_id: "acc-2"
+    }
+
     :ok = project(event, 1, @reserved_at)
   end
 

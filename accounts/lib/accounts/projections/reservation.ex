@@ -9,6 +9,7 @@ defmodule Accounts.Projections.Reservation do
   schema "reservations" do
     field :account_id, :string
     field :correlation_id, :string
+    field :to_account_id, :string
     field :amount, :integer
     field :status, Ecto.Enum, values: [:open, :confirmed, :released, :rejected]
     field :reason, :string

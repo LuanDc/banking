@@ -19,6 +19,7 @@ defmodule Accounts.Handlers.Projectors.ReservationsProjector do
     Ecto.Multi.insert(multi, :reservation, %Reservation{
       account_id: event.account_id,
       correlation_id: event.correlation_id,
+      to_account_id: event.to_account_id,
       amount: event.amount,
       status: :open,
       reserved_at: metadata.created_at
@@ -29,6 +30,7 @@ defmodule Accounts.Handlers.Projectors.ReservationsProjector do
     Ecto.Multi.insert(multi, :reservation, %Reservation{
       account_id: event.account_id,
       correlation_id: event.correlation_id,
+      to_account_id: event.to_account_id,
       amount: event.amount,
       status: :rejected,
       reason: to_string(event.reason),
