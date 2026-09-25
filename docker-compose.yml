@@ -1,0 +1,52 @@
+# Local infrastructure for the accounts and ledger services.
+#
+#   docker compose up -d      # start
+#   docker compose down       # stop (data is kept in named volumes)
+#   docker compose down -v    # stop and wipe the data
+#
+# The services themselves run on the host (`mix phx.server`, `mix test`).
+
+services:
+  # One Postgres server for both services. Each service keeps its own databases —
+  # read models and event store — so no database is shared (README, section 6):
+  # accounts_dev, accounts_eventstore_dev, ledger_dev, ledger_eventstore_dev, and
+  # their *_test counterparts, all created by `mix setup` / `mix test`.
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Message transport between the services (README, D3): commands to a queue owned
+  # by the ledger, events back on a topic exchange.
+  # Management UI: http://localhost:15672 (banking / banking).
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      # `guest` only logs in from localhost, and published ports reach the broker
+      # through Docker's network, so a dedicated user is needed.
+      RABBITMQ_DEFAULT_USER: banking
+      RABBITMQ_DEFAULT_PASS: banking
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
