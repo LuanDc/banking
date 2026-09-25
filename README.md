@@ -621,3 +621,19 @@ A booked batch is never changed. A reversal will be a new `TransactionBatch` wit
 inverted and a `reversal_of` field pointing to the original, and a batch can be reversed once.
 Nothing needs it yet — every rejection in the current flow happens before booking — so it is
 implemented when returns (PIX) or corrections appear.
+
+### D10 · RabbitMQ topology: the receiver owns its queue
+
+Commands to `Ledger` travel point to point on the `ledger.commands` queue, which `Ledger`
+declares and owns; senders publish through the default exchange with the queue name as routing
+key.
+
+| Concern | Decision |
+| --- | --- |
+| Message format | Command `type` and `message_id` as AMQP properties; the payload as a persistent JSON body |
+| Publish succeeded | Only once the broker took the message: publisher confirms, plus `mandatory`, so a message no queue takes fails with `:unroutable` instead of vanishing. The outbox (D3) then retries it |
+| Failed message | Rejected without requeue and dead-lettered to `ledger.commands.dead`: unknown command, invalid JSON or a command the aggregate refuses cannot loop, and stays available to inspect and replay |
+| Ordering | A single processor consumes the queue, so a `CloseLedgerAccount` is never handled before the `OpenLedgerAccount` of the same account |
+
+Sending to a queue that does not exist yet fails and is retried, so `Accounts` can start before
+`Ledger` without losing messages.
