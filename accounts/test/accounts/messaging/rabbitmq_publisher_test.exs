@@ -36,4 +36,32 @@ defmodule Accounts.Messaging.RabbitMQPublisherTest do
 
     assert {:error, :unroutable} = RabbitMQPublisher.publish(:test_publisher, @message)
   end
+
+  test "survives a closed channel and publishes again once reconnected", %{
+    channel: channel,
+    queue: queue
+  } do
+    {:ok, _} = AMQP.Queue.declare(channel, queue, exclusive: true)
+    publisher = start_supervised!({RabbitMQPublisher, queue: queue, name: :test_publisher})
+
+    :ok = AMQP.Channel.close(:sys.get_state(publisher).channel)
+
+    assert {:error, _reason} = RabbitMQPublisher.publish(:test_publisher, @message)
+    assert Process.alive?(publisher)
+    assert eventually(fn -> RabbitMQPublisher.publish(:test_publisher, @message) == :ok end)
+  end
+
+  defp eventually(check, attempts \\ 50) do
+    cond do
+      check.() -> true
+      attempts == 0 -> false
+      true -> Process.sleep(100) && eventually(check, attempts - 1)
+    end
+  end
+
+  @tag integration: false
+  test "returns an error instead of exiting when the publisher is not running" do
+    assert {:error, :publisher_unavailable} =
+             RabbitMQPublisher.publish(:no_such_publisher, @message)
+  end
 end
