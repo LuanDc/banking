@@ -17,6 +17,7 @@ defmodule Accounts.Application do
       ] ++
         projection_children() ++
         messaging_children() ++
+        policy_children() ++
         [
           # Start to serve requests, typically the last entry
           AccountsWeb.Endpoint
@@ -47,6 +48,16 @@ defmodule Accounts.Application do
   defp messaging_children do
     if Application.get_env(:accounts, :start_messaging, true) do
       [Accounts.Messaging.RabbitMQPublisher, Accounts.Handlers.LedgerCommandsPublisher]
+    else
+      []
+    end
+  end
+
+  # The transfer saga (README, section 5). Tests turn it off, so no policy dispatches from the
+  # shared test event store on its own.
+  defp policy_children do
+    if Application.get_env(:accounts, :start_policies, true) do
+      [Accounts.Handlers.LedgerRouter]
     else
       []
     end

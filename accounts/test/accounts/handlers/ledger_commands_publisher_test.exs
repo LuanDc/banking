@@ -3,6 +3,7 @@ defmodule Accounts.Handlers.LedgerCommandsPublisherTest do
 
   import Mox
 
+  alias Accounts.Events.CreditAuthorized
   alias Accounts.Events.CustomerAccountClosed
   alias Accounts.Events.CustomerAccountOpened
   alias Accounts.Handlers.LedgerCommandsPublisher
@@ -35,6 +36,22 @@ defmodule Accounts.Handlers.LedgerCommandsPublisherTest do
                %CustomerAccountClosed{account_id: "acc-1"},
                @metadata
              )
+  end
+
+  test "publishes the batch that books an authorized credit" do
+    expect(PublisherMock, :publish, fn message ->
+      assert %{type: "BookTransactionBatch", payload: %{batch_id: "corr-1"}} = message
+      :ok
+    end)
+
+    event = %CreditAuthorized{
+      account_id: "acc-2",
+      amount: 400,
+      correlation_id: "corr-1",
+      from_account_id: "acc-1"
+    }
+
+    assert :ok = LedgerCommandsPublisher.handle(event, @metadata)
   end
 
   test "retries a failed publish with a growing delay, so the event is never skipped" do

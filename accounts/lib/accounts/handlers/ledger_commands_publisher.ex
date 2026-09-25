@@ -11,6 +11,7 @@ defmodule Accounts.Handlers.LedgerCommandsPublisher do
     name: "ledger_commands_publisher",
     start_from: :origin
 
+  alias Accounts.Events.CreditAuthorized
   alias Accounts.Events.CustomerAccountClosed
   alias Accounts.Events.CustomerAccountOpened
   alias Accounts.Messaging.LedgerCommands
@@ -23,6 +24,9 @@ defmodule Accounts.Handlers.LedgerCommandsPublisher do
   def handle(%CustomerAccountOpened{} = event, metadata), do: publish(event, metadata)
 
   def handle(%CustomerAccountClosed{} = event, metadata), do: publish(event, metadata)
+
+  # README, section 5: an authorized credit is booked in the Ledger.
+  def handle(%CreditAuthorized{} = event, metadata), do: publish(event, metadata)
 
   # A failed publish is retried with a growing delay and never skipped: the subscription
   # does not move past an event until its message is out.
