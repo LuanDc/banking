@@ -11,6 +11,18 @@ defmodule Ledger.Messaging.InboxTest do
 
   # Messages arrive as decoded JSON: string keys, string values.
 
+  describe "dispatch_opts/1" do
+    test "opens and closes accounts with strong consistency, for the D5 check of the next batch" do
+      for command <- [%OpenLedgerAccount{account_id: "a"}, %CloseLedgerAccount{account_id: "a"}] do
+        assert Inbox.dispatch_opts(command) == [consistency: :strong]
+      end
+    end
+
+    test "books a batch with the default consistency" do
+      assert Inbox.dispatch_opts(%BookTransactionBatch{}) == []
+    end
+  end
+
   describe "to_command/1" do
     test "composes OpenLedgerAccount" do
       message = %{

@@ -15,9 +15,17 @@ defmodule Ledger.Messaging.Inbox do
 
   def handle(message) do
     with {:ok, command} <- to_command(message) do
-      App.dispatch(command)
+      App.dispatch(command, dispatch_opts(command))
     end
   end
+
+  @doc """
+  Opening and closing wait for the strongly consistent ledger accounts projection, so the D5
+  check of the next batch on the queue already sees the account (README, D5).
+  """
+  def dispatch_opts(%OpenLedgerAccount{}), do: [consistency: :strong]
+  def dispatch_opts(%CloseLedgerAccount{}), do: [consistency: :strong]
+  def dispatch_opts(_command), do: []
 
   def to_command(%{"type" => "OpenLedgerAccount", "payload" => payload}) do
     {:ok, %OpenLedgerAccount{account_id: payload["account_id"]}}

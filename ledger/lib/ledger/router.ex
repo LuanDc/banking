@@ -10,6 +10,9 @@ defmodule Ledger.Router do
   alias Ledger.LedgerAccount
   alias Ledger.TransactionBatch
 
+  # README, D5: a batch into an account that is not open is rejected.
+  middleware(Ledger.Middleware.OpenAccounts)
+
   identify(LedgerAccount, by: :account_id, prefix: "ledger-account-")
   identify(TransactionBatch, by: :batch_id, prefix: "transaction-batch-")
 

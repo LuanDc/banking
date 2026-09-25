@@ -1,7 +1,8 @@
 defmodule Ledger.AppTest do
   # Smoke tests of the Commanded wiring: router, event store and serializer. The rules
-  # themselves are covered by the pure aggregate tests.
-  use ExUnit.Case, async: false
+  # themselves are covered by the pure aggregate tests. DataCase, because dispatching a batch
+  # reads the open ledger accounts (README, D5).
+  use Ledger.DataCase, async: false
 
   @moduletag :integration
 

@@ -49,6 +49,24 @@ defmodule Ledger.TransactionBatchTest do
                book([debit("acc-1", 1_000), credit("acc-2", 1_000), stray])
     end
 
+    test "a rejection carries the batch's entries, so the sender knows whom to compensate" do
+      entries = [debit("acc-1", 1_000), credit("acc-2", 999)]
+
+      assert %LedgerBatchRejected{entries: ^entries} = book(entries)
+    end
+
+    test "rejects a batch touching an account that is not open (D5)" do
+      command = %BookTransactionBatch{
+        batch_id: "batch-1",
+        correlation_id: "corr-1",
+        entries: [debit("acc-1", 1_000), credit("acc-2", 1_000)],
+        accounts_not_open: ["acc-2"]
+      }
+
+      assert %LedgerBatchRejected{reason: :account_not_open} =
+               TransactionBatch.execute(%TransactionBatch{}, command)
+    end
+
     test "ignores a redelivered command for a batch that was already booked" do
       booked = %TransactionBatch{batch_id: "batch-1", status: :booked}
 

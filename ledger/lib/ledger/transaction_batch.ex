@@ -15,7 +15,7 @@ defmodule Ledger.TransactionBatch do
       do: []
 
   def execute(%__MODULE__{}, %BookTransactionBatch{} = command) do
-    case validate(command.entries) do
+    case validate(command) do
       :ok ->
         %LedgerBatchBooked{
           batch_id: command.batch_id,
@@ -27,7 +27,8 @@ defmodule Ledger.TransactionBatch do
         %LedgerBatchRejected{
           batch_id: command.batch_id,
           correlation_id: command.correlation_id,
-          reason: reason
+          reason: reason,
+          entries: command.entries
         }
     end
   end
@@ -40,12 +41,14 @@ defmodule Ledger.TransactionBatch do
     %__MODULE__{batch | batch_id: event.batch_id, status: :rejected}
   end
 
-  defp validate([]), do: {:error, :empty}
+  defp validate(%BookTransactionBatch{entries: []}), do: {:error, :empty}
 
-  defp validate(entries) do
+  defp validate(%BookTransactionBatch{entries: entries} = command) do
     cond do
       not Enum.all?(entries, &(&1.type in [:debit, :credit])) -> {:error, :invalid_entry_type}
       not Enum.all?(entries, &valid_amount?/1) -> {:error, :invalid_amount}
+      # README, D5: no entry into an account that is not open.
+      command.accounts_not_open != [] -> {:error, :account_not_open}
       not balanced?(entries) -> {:error, :unbalanced}
       true -> :ok
     end

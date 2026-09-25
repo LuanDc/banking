@@ -21,7 +21,11 @@ defmodule Ledger.EventsSerializationTest do
     %Events.LedgerBatchRejected{
       batch_id: "batch-1",
       correlation_id: "corr-1",
-      reason: :unbalanced
+      reason: :unbalanced,
+      entries: [
+        %LedgerEntry{account_id: "acc-1", type: :debit, amount: 1_000},
+        %LedgerEntry{account_id: "acc-2", type: :credit, amount: 999}
+      ]
     }
   ]
 

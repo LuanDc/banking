@@ -48,10 +48,12 @@ defmodule LedgerWeb.LedgerAccountControllerTest do
   end
 
   test "GET /api/batches/:batch_id", %{conn: conn} do
-    insert(:statement_entry, batch_id: "batch-1", position: 0, type: :debit)
-    insert(:statement_entry, batch_id: "batch-1", position: 1, type: :credit)
+    # A fresh id: async tests inserting the same (batch_id, position) deadlock on its index.
+    batch_id = Ecto.UUID.generate()
+    insert(:statement_entry, batch_id: batch_id, position: 0, type: :debit)
+    insert(:statement_entry, batch_id: batch_id, position: 1, type: :credit)
 
-    conn = get(conn, ~p"/api/batches/batch-1")
+    conn = get(conn, ~p"/api/batches/#{batch_id}")
 
     assert %{"entries" => [_debit, _credit]} = assert_response_schema(conn, 200)
   end
