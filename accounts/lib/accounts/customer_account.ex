@@ -45,16 +45,21 @@ defmodule Accounts.CustomerAccount do
   @can_send [:active]
   @can_receive [:active, :blocked]
 
-  # Statuses each command may run from (README, sections 3.1 and 7).
-  # The status it leads to is set by the event's apply/2.
-  @allowed_from %{
-    ActivateCustomerAccount => [:pending_kyc],
-    BlockCustomerAccount => [:active],
-    UnblockCustomerAccount => [:blocked],
-    FreezeCustomerAccount => [:active],
-    UnfreezeCustomerAccount => [:frozen],
-    CloseCustomerAccount => [:active, :blocked]
+  # The lifecycle FSM (README, sections 3.1 and 7): {from, event} => to.
+  # execute/2 emits an event only when it is a transition out of the current
+  # status, and apply/2 follows that same transition to the next status.
+  @transitions %{
+    {nil, CustomerAccountOpened} => :pending_kyc,
+    {:pending_kyc, CustomerAccountActivated} => :active,
+    {:active, CustomerAccountBlocked} => :blocked,
+    {:blocked, CustomerAccountUnblocked} => :active,
+    {:active, CustomerAccountFrozen} => :frozen,
+    {:frozen, CustomerAccountUnfrozen} => :active,
+    {:active, CustomerAccountClosed} => :closed,
+    {:blocked, CustomerAccountClosed} => :closed
   }
+
+  @lifecycle_events @transitions |> Map.keys() |> Enum.map(&elem(&1, 1)) |> Enum.uniq()
 
   def execute(%__MODULE__{status: nil}, %OpenCustomerAccount{} = command) do
     %CustomerAccountOpened{account_id: command.account_id, customer_id: command.customer_id}
@@ -62,40 +67,38 @@ defmodule Accounts.CustomerAccount do
 
   def execute(%__MODULE__{}, %OpenCustomerAccount{}), do: {:error, :account_already_exists}
 
-  def execute(%__MODULE__{status: status}, %ActivateCustomerAccount{} = command) do
-    with :ok <- guard(status, command) do
-      %CustomerAccountActivated{account_id: command.account_id}
-    end
+  def execute(%__MODULE__{} = account, %ActivateCustomerAccount{} = command) do
+    transition(account, %CustomerAccountActivated{account_id: command.account_id})
   end
 
-  def execute(%__MODULE__{status: status}, %BlockCustomerAccount{} = command) do
-    with :ok <- guard(status, command) do
-      %CustomerAccountBlocked{account_id: command.account_id, reason: command.reason}
-    end
+  def execute(%__MODULE__{} = account, %BlockCustomerAccount{} = command) do
+    transition(account, %CustomerAccountBlocked{
+      account_id: command.account_id,
+      reason: command.reason
+    })
   end
 
-  def execute(%__MODULE__{status: status}, %UnblockCustomerAccount{} = command) do
-    with :ok <- guard(status, command) do
-      %CustomerAccountUnblocked{account_id: command.account_id}
-    end
+  def execute(%__MODULE__{} = account, %UnblockCustomerAccount{} = command) do
+    transition(account, %CustomerAccountUnblocked{account_id: command.account_id})
   end
 
-  def execute(%__MODULE__{status: status}, %FreezeCustomerAccount{} = command) do
-    with :ok <- guard(status, command) do
-      %CustomerAccountFrozen{account_id: command.account_id, reason: command.reason}
-    end
+  def execute(%__MODULE__{} = account, %FreezeCustomerAccount{} = command) do
+    transition(account, %CustomerAccountFrozen{
+      account_id: command.account_id,
+      reason: command.reason
+    })
   end
 
-  def execute(%__MODULE__{status: status}, %UnfreezeCustomerAccount{} = command) do
-    with :ok <- guard(status, command) do
-      %CustomerAccountUnfrozen{account_id: command.account_id}
-    end
+  def execute(%__MODULE__{} = account, %UnfreezeCustomerAccount{} = command) do
+    transition(account, %CustomerAccountUnfrozen{account_id: command.account_id})
   end
 
-  def execute(%__MODULE__{status: status} = account, %CloseCustomerAccount{} = command) do
-    with :ok <- guard(status, command),
+  def execute(%__MODULE__{} = account, %CloseCustomerAccount{} = command) do
+    event = %CustomerAccountClosed{account_id: command.account_id}
+
+    with :ok <- check_transition(account, event),
          :ok <- check_closure(account) do
-      %CustomerAccountClosed{account_id: command.account_id}
+      event
     end
   end
 
@@ -195,31 +198,12 @@ defmodule Accounts.CustomerAccount do
   end
 
   def apply(%__MODULE__{} = account, %CustomerAccountOpened{} = event) do
-    %__MODULE__{account | account_id: event.account_id, status: :pending_kyc}
+    %__MODULE__{account | account_id: event.account_id, status: next_status!(account, event)}
   end
 
-  def apply(%__MODULE__{} = account, %CustomerAccountActivated{}) do
-    %__MODULE__{account | status: :active}
-  end
-
-  def apply(%__MODULE__{} = account, %CustomerAccountBlocked{}) do
-    %__MODULE__{account | status: :blocked}
-  end
-
-  def apply(%__MODULE__{} = account, %CustomerAccountUnblocked{}) do
-    %__MODULE__{account | status: :active}
-  end
-
-  def apply(%__MODULE__{} = account, %CustomerAccountFrozen{}) do
-    %__MODULE__{account | status: :frozen}
-  end
-
-  def apply(%__MODULE__{} = account, %CustomerAccountUnfrozen{}) do
-    %__MODULE__{account | status: :active}
-  end
-
-  def apply(%__MODULE__{} = account, %CustomerAccountClosed{}) do
-    %__MODULE__{account | status: :closed}
+  def apply(%__MODULE__{} = account, %event{} = lifecycle_event)
+      when event in @lifecycle_events do
+    %__MODULE__{account | status: next_status!(account, lifecycle_event)}
   end
 
   def apply(%__MODULE__{} = account, %BalanceReserved{} = event) do
@@ -299,7 +283,17 @@ defmodule Accounts.CustomerAccount do
   # README, D1: money is an integer number of cents.
   defp valid_amount?(amount), do: is_integer(amount) and amount > 0
 
-  defp guard(status, %command{}) do
-    if status in Map.fetch!(@allowed_from, command), do: :ok, else: {:error, :invalid_transition}
+  defp transition(account, event) do
+    with :ok <- check_transition(account, event), do: event
+  end
+
+  defp check_transition(%__MODULE__{status: from}, %event{}) do
+    if is_map_key(@transitions, {from, event}), do: :ok, else: {:error, :invalid_transition}
+  end
+
+  # An event stored in the stream was a valid transition when emitted, so a
+  # missing entry here means a corrupt stream and should crash the aggregate.
+  defp next_status!(%__MODULE__{status: from}, %event{}) do
+    Map.fetch!(@transitions, {from, event})
   end
 end
