@@ -58,6 +58,7 @@ if config_env() == :prod do
       """
 
   config :ledger, Ledger.Messaging.CommandsConsumer, url: rabbitmq_url
+  config :ledger, Ledger.Messaging.RabbitMQPublisher, url: rabbitmq_url
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you

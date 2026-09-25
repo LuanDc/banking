@@ -26,6 +26,10 @@ config :ledger, Ledger.Messaging.CommandsConsumer,
   queue: "ledger.commands",
   dead_letter_queue: "ledger.commands.dead"
 
+# The events other contexts need go out on a topic exchange the Ledger owns (README, D3).
+config :ledger, Ledger.Messaging.Publisher, adapter: Ledger.Messaging.RabbitMQPublisher
+config :ledger, Ledger.Messaging.RabbitMQPublisher, exchange: "ledger.events"
+
 # Configures the endpoint
 config :ledger, LedgerWeb.Endpoint,
   url: [host: "localhost"],

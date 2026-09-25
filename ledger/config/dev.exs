@@ -21,6 +21,7 @@ config :ledger, Ledger.EventStore,
 
 # RabbitMQ from docker-compose.yml.
 config :ledger, Ledger.Messaging.CommandsConsumer, url: "amqp://banking:banking@localhost:5672"
+config :ledger, Ledger.Messaging.RabbitMQPublisher, url: "amqp://banking:banking@localhost:5672"
 
 # For development, we disable any cache and enable
 # debugging and code reloading.

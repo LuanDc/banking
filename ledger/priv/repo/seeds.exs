@@ -1,11 +1,11 @@
-# Script for populating the database. You can run it as:
+# The bank's internal accounts, opened directly in the Ledger (README, D5). Run with
+# `mix run priv/repo/seeds.exs`, also part of `mix setup`. Opening is idempotent (D4).
 #
-#     mix run priv/repo/seeds.exs
-#
-# Inside the script, you can read and write to any of your
-# repositories directly:
-#
-#     Ledger.Repo.insert!(%Ledger.SomeSchema{})
-#
-# We recommend using the bang functions (`insert!`, `update!`
-# and so on) as they will fail if something goes wrong.
+#   pix-settlement: the bank's PIX settlement account, debited by every inbound PIX (D2).
+
+alias Ledger.App
+alias Ledger.Commands.OpenLedgerAccount
+
+for account_id <- ["pix-settlement"] do
+  :ok = App.dispatch(%OpenLedgerAccount{account_id: account_id}, consistency: :strong)
+end

@@ -18,7 +18,10 @@ defmodule Ledger.Application do
         projection_children() ++
         [
           # Commands from other services, dispatched through Ledger.App (README, D3).
-          Ledger.Messaging.CommandsConsumer,
+          Ledger.Messaging.CommandsConsumer
+        ] ++
+        messaging_children() ++
+        [
           # Start to serve requests, typically the last entry
           LedgerWeb.Endpoint
         ]
@@ -38,6 +41,16 @@ defmodule Ledger.Application do
         Ledger.Handlers.Projectors.BalancesProjector,
         Ledger.Handlers.Projectors.StatementProjector
       ]
+    else
+      []
+    end
+  end
+
+  # The outbox of the Ledger's events for other contexts (README, D3). Tests turn it off, so no
+  # handler publishes from the shared test event store on its own.
+  defp messaging_children do
+    if Application.get_env(:ledger, :start_messaging, true) do
+      [Ledger.Messaging.RabbitMQPublisher, Ledger.Handlers.LedgerEventsPublisher]
     else
       []
     end
