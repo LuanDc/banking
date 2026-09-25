@@ -33,9 +33,9 @@ defmodule Accounts.Application do
   defp projection_children do
     if Application.get_env(:accounts, :start_projections, true) do
       [
-        Accounts.Projectors.CustomerAccountsProjector,
-        Accounts.Projectors.ReservationsProjector,
-        Accounts.Projectors.CreditsProjector
+        Accounts.Handlers.Projectors.CustomerAccountsProjector,
+        Accounts.Handlers.Projectors.ReservationsProjector,
+        Accounts.Handlers.Projectors.CreditsProjector
       ]
     else
       []
@@ -46,7 +46,7 @@ defmodule Accounts.Application do
   # turn them off, so no handler consumes the event store on its own.
   defp messaging_children do
     if Application.get_env(:accounts, :start_messaging, true) do
-      [Accounts.Messaging.RabbitMQPublisher, Accounts.Messaging.LedgerCommandsPublisher]
+      [Accounts.Messaging.RabbitMQPublisher, Accounts.Handlers.LedgerCommandsPublisher]
     else
       []
     end

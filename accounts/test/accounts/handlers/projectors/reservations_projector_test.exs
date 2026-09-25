@@ -1,4 +1,4 @@
-defmodule Accounts.Projectors.ReservationsProjectorTest do
+defmodule Accounts.Handlers.Projectors.ReservationsProjectorTest do
   # Not async: every test writes the same row of projection_versions.
   use Accounts.DataCase, async: false
 
@@ -6,8 +6,8 @@ defmodule Accounts.Projectors.ReservationsProjectorTest do
   alias Accounts.Events.BalanceReservationRejected
   alias Accounts.Events.BalanceReserved
   alias Accounts.Events.ReservationConfirmed
+  alias Accounts.Handlers.Projectors.ReservationsProjector
   alias Accounts.Projections.Reservation
-  alias Accounts.Projectors.ReservationsProjector
 
   @reserved_at ~U[2026-09-25 12:00:00.000000Z]
   @settled_at ~U[2026-09-25 12:00:05.000000Z]

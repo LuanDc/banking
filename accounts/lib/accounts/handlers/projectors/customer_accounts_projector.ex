@@ -1,4 +1,4 @@
-defmodule Accounts.Projectors.CustomerAccountsProjector do
+defmodule Accounts.Handlers.Projectors.CustomerAccountsProjector do
   @moduledoc """
   Projects the lifecycle of customer accounts into `customer_accounts` and their FSM history
   into `customer_account_status_changes` (README, section 7).

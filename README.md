@@ -474,7 +474,10 @@ accounts/                          # Account Management Context
     ├── process_managers/
     │   └── ledger_router.ex       # 🟪 transfer saga: credit authorization, booking, compensation
     ├── projections/               # 🟩 read-model schemas: AccountStatusView, ReservationsView, CreditsView
-    └── projectors/                # 🟩 one projector per read model (D11)
+    ├── handlers/                  # subscribers of the event store
+    │   ├── projectors/            # 🟩 one projector per read model (D11)
+    │   └── ledger_commands_publisher.ex  # 🟪 outbox: Ledger commands to RabbitMQ (D3)
+    └── messaging/                 # RabbitMQ transport: publisher port, adapter, command contract
 
 ledger/                            # Ledger Context
 └── lib/ledger/
@@ -483,7 +486,9 @@ ledger/                            # Ledger Context
     ├── ledger_entry.ex            # DEBIT/CREDIT value object
     ├── commands/ · events/        # 🟦 🟧
     ├── projections/               # 🟩 read-model schemas: LedgerAccountsView, BalanceView, StatementView, TrialBalanceView
-    └── projectors/                # 🟩 one projector per read model (D11)
+    ├── handlers/
+    │   └── projectors/            # 🟩 one projector per read model (D11)
+    └── messaging/                 # RabbitMQ transport: the commands consumer and inbox
 ```
 
 Each service has the same setup: Phoenix API, Ecto for the read models, Commanded with a

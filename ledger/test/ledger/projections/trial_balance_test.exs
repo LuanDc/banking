@@ -3,9 +3,9 @@ defmodule Ledger.Projections.TrialBalanceTest do
   use Ledger.DataCase, async: false
 
   alias Ledger.Events.LedgerBatchBooked
+  alias Ledger.Handlers.Projectors.BalancesProjector
   alias Ledger.LedgerEntry
   alias Ledger.Projections.TrialBalance
-  alias Ledger.Projectors.BalancesProjector
 
   test "is zero before anything is booked" do
     assert %TrialBalance{debit_total: 0, credit_total: 0} = Repo.one(TrialBalance)

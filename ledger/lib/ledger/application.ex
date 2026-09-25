@@ -34,9 +34,9 @@ defmodule Ledger.Application do
   defp projection_children do
     if Application.get_env(:ledger, :start_projections, true) do
       [
-        Ledger.Projectors.LedgerAccountsProjector,
-        Ledger.Projectors.BalancesProjector,
-        Ledger.Projectors.StatementProjector
+        Ledger.Handlers.Projectors.LedgerAccountsProjector,
+        Ledger.Handlers.Projectors.BalancesProjector,
+        Ledger.Handlers.Projectors.StatementProjector
       ]
     else
       []

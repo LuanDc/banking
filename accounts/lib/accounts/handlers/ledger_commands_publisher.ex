@@ -1,4 +1,4 @@
-defmodule Accounts.Messaging.LedgerCommandsPublisher do
+defmodule Accounts.Handlers.LedgerCommandsPublisher do
   @moduledoc """
   Publishes the Ledger commands caused by Account Management events (README, D3 and D5).
 

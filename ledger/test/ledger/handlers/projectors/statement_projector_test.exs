@@ -1,11 +1,11 @@
-defmodule Ledger.Projectors.StatementProjectorTest do
+defmodule Ledger.Handlers.Projectors.StatementProjectorTest do
   # Not async: every test writes the same row of projection_versions.
   use Ledger.DataCase, async: false
 
   alias Ledger.Events.LedgerBatchBooked
+  alias Ledger.Handlers.Projectors.StatementProjector
   alias Ledger.LedgerEntry
   alias Ledger.Projections.StatementEntry
-  alias Ledger.Projectors.StatementProjector
 
   @booked_at ~U[2026-09-25 12:00:00.000000Z]
 

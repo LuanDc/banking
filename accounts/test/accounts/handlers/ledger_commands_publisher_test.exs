@@ -1,11 +1,11 @@
-defmodule Accounts.Messaging.LedgerCommandsPublisherTest do
+defmodule Accounts.Handlers.LedgerCommandsPublisherTest do
   use ExUnit.Case, async: true
 
   import Mox
 
   alias Accounts.Events.CustomerAccountClosed
   alias Accounts.Events.CustomerAccountOpened
-  alias Accounts.Messaging.LedgerCommandsPublisher
+  alias Accounts.Handlers.LedgerCommandsPublisher
   alias Accounts.Messaging.PublisherMock
   alias Commanded.Event.FailureContext
 

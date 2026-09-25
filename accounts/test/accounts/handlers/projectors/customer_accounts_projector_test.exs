@@ -1,4 +1,4 @@
-defmodule Accounts.Projectors.CustomerAccountsProjectorTest do
+defmodule Accounts.Handlers.Projectors.CustomerAccountsProjectorTest do
   # Not async: every test writes the same row of projection_versions.
   use Accounts.DataCase, async: false
 
@@ -12,9 +12,9 @@ defmodule Accounts.Projectors.CustomerAccountsProjectorTest do
   alias Accounts.Events.CustomerAccountOpened
   alias Accounts.Events.CustomerAccountUnblocked
   alias Accounts.Events.CustomerAccountUnfrozen
+  alias Accounts.Handlers.Projectors.CustomerAccountsProjector
   alias Accounts.Projections.CustomerAccount
   alias Accounts.Projections.StatusChange
-  alias Accounts.Projectors.CustomerAccountsProjector
 
   @opened_at ~U[2026-09-25 12:00:00.000000Z]
   @changed_at ~U[2026-09-26 12:00:00.000000Z]
