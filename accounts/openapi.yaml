@@ -3,8 +3,9 @@ info:
   title: Accounts API
   version: 0.1.0
   description: |
-    Proposed HTTP API of the Account Management Context (README, section 3). **None of these
-    endpoints exists yet.**
+    HTTP API of the Account Management Context (README, section 3). This file is the source of
+    truth (D12): the controller tests validate every response against it. Operations marked
+    `x-planned: true` are not implemented yet.
 
     - **Commands** are the ones a person starts: opening an account, back-office lifecycle
       transitions, and transfers. Saga steps (`ReserveBalance`, `AuthorizeCredit`,
@@ -216,6 +217,7 @@ paths:
     post:
       tags: [Transfers]
       operationId: transferMoney
+      x-planned: true
       summary: Transfer money between two customer accounts
       description: |
         Starts the saga in section 5 by reserving the amount on the source account. The rest of
@@ -255,7 +257,7 @@ paths:
         "422":
           description: |
             Invalid request, or the reservation was rejected (`BalanceReservationRejected`).
-            `code` is one of `validation_failed`, `same_account`, `invalid_amount`,
+            `code` is one of `same_account`, `invalid_amount`,
             `account_not_active` or `insufficient_balance`.
           content:
             application/json:
@@ -272,6 +274,7 @@ paths:
     get:
       tags: [Transfers]
       operationId: getTransfer
+      x-planned: true
       summary: Get a transfer's outcome
       description: |
         Built from the `reservations` and `credits` rows with this `correlation_id`. There is no
@@ -370,7 +373,9 @@ components:
     Transitioned:
       description: Transition recorded. The read models follow shortly after.
     NotFound:
-      description: No account (or transfer) with that id.
+      description: |
+        No account (or transfer) with that id. `code` is `not_found` on a read, and
+        `account_not_found` on a command.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -384,12 +389,14 @@ components:
           example:
             errors: { code: invalid_transition, detail: The account cannot make this transition from its current status. }
     ValidationFailed:
-      description: The request body is missing a field or has an invalid one.
+      description: |
+        A required field is missing or blank. `code` is `customer_id_required` or
+        `reason_required`.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
           example:
-            errors: { code: validation_failed, detail: reason can't be blank }
+            errors: { code: reason_required, detail: A reason is required. }
 
   schemas:
     Id:

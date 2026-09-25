@@ -79,7 +79,11 @@ defmodule Accounts.MixProject do
       {:excoveralls, "~> 0.18.5", only: :test},
       {:ex_machina, "~> 2.8", only: :test},
       {:faker, "~> 0.19.0", only: [:dev, :test]},
-      {:mox, "~> 1.3", only: :test}
+      {:mox, "~> 1.3", only: :test},
+
+      # Contract tests against openapi.yaml (README, D12)
+      {:jsv, "~> 0.25", only: :test},
+      {:yaml_elixir, "~> 2.12", only: [:dev, :test]}
     ]
   end
 
