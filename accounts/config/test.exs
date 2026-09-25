@@ -16,7 +16,7 @@ config :accounts, Accounts.Repo,
 # The event store has no Ecto sandbox, so tests share one database per
 # partition and reset it between runs.
 config :accounts, Accounts.EventStore,
-  serializer: EventStore.JsonSerializer,
+  serializer: Commanded.Serialization.JsonSerializer,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",

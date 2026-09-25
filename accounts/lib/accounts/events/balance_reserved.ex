@@ -4,5 +4,6 @@ defmodule Accounts.Events.BalanceReserved do
   the Ledger books the transfer from it.
   """
 
+  @derive Jason.Encoder
   defstruct [:account_id, :amount, :correlation_id]
 end

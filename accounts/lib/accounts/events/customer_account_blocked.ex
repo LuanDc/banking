@@ -3,5 +3,6 @@ defmodule Accounts.Events.CustomerAccountBlocked do
   A customer account was blocked: debits are no longer allowed.
   """
 
+  @derive Jason.Encoder
   defstruct [:account_id, :reason]
 end

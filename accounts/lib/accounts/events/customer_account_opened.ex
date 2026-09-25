@@ -3,5 +3,6 @@ defmodule Accounts.Events.CustomerAccountOpened do
   A customer account was opened.
   """
 
+  @derive Jason.Encoder
   defstruct [:account_id, :customer_id]
 end

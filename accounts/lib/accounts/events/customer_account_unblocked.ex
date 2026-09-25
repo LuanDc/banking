@@ -3,5 +3,6 @@ defmodule Accounts.Events.CustomerAccountUnblocked do
   A customer account was unblocked: debits are allowed again.
   """
 
+  @derive Jason.Encoder
   defstruct [:account_id]
 end

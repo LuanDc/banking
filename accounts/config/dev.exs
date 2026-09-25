@@ -12,7 +12,7 @@ config :accounts, Accounts.Repo,
 
 # The event store keeps its own database, separate from the read models.
 config :accounts, Accounts.EventStore,
-  serializer: EventStore.JsonSerializer,
+  serializer: Commanded.Serialization.JsonSerializer,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
