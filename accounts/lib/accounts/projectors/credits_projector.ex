@@ -1,4 +1,4 @@
-defmodule Accounts.Projections.CreditsProjector do
+defmodule Accounts.Projectors.CreditsProjector do
   @moduledoc """
   Projects credits to customer accounts into `credits` (README, D8). A settled credit keeps its
   row, with the way it settled, as a trail of the transfer saga.

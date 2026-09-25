@@ -1,4 +1,4 @@
-defmodule Accounts.Projections.CreditsProjectorTest do
+defmodule Accounts.Projectors.CreditsProjectorTest do
   # Not async: every test writes the same row of projection_versions.
   use Accounts.DataCase, async: false
 
@@ -7,7 +7,7 @@ defmodule Accounts.Projections.CreditsProjectorTest do
   alias Accounts.Events.CreditPosted
   alias Accounts.Events.CreditRejected
   alias Accounts.Projections.Credit
-  alias Accounts.Projections.CreditsProjector
+  alias Accounts.Projectors.CreditsProjector
 
   @authorized_at ~U[2026-09-25 12:00:00.000000Z]
   @settled_at ~U[2026-09-25 12:00:05.000000Z]

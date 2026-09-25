@@ -4,8 +4,8 @@ defmodule Ledger.Projections.TrialBalanceTest do
 
   alias Ledger.Events.LedgerBatchBooked
   alias Ledger.LedgerEntry
-  alias Ledger.Projections.BalancesProjector
   alias Ledger.Projections.TrialBalance
+  alias Ledger.Projectors.BalancesProjector
 
   test "is zero before anything is booked" do
     assert %TrialBalance{debit_total: 0, credit_total: 0} = Repo.one(TrialBalance)

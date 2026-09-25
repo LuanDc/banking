@@ -1,4 +1,4 @@
-defmodule Ledger.Projections.StatementProjector do
+defmodule Ledger.Projectors.StatementProjector do
   @moduledoc """
   Projects booked batches into `ledger_entries`, the StatementView (README, section 7).
   """

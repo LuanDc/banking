@@ -1,4 +1,4 @@
-defmodule Ledger.Projections.LedgerAccountsProjector do
+defmodule Ledger.Projectors.LedgerAccountsProjector do
   @moduledoc """
   Projects the lifecycle of ledger accounts into `ledger_accounts` (README, D5).
 

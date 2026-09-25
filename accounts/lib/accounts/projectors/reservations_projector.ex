@@ -1,4 +1,4 @@
-defmodule Accounts.Projections.ReservationsProjector do
+defmodule Accounts.Projectors.ReservationsProjector do
   @moduledoc """
   Projects balance reservations into `reservations` (README, section 7). A settled reservation
   keeps its row, with the way it settled, as a trail of the transfer saga.

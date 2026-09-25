@@ -473,7 +473,8 @@ accounts/                          # Account Management Context
     ├── events/                    # 🟧 events (section 7)
     ├── process_managers/
     │   └── ledger_router.ex       # 🟪 transfer saga: credit authorization, booking, compensation
-    └── projections/               # 🟩 AccountStatusView, ReservationsView, CreditsView
+    ├── projections/               # 🟩 read-model schemas: AccountStatusView, ReservationsView, CreditsView
+    └── projectors/                # 🟩 one projector per read model (D11)
 
 ledger/                            # Ledger Context
 └── lib/ledger/
@@ -481,7 +482,8 @@ ledger/                            # Ledger Context
     ├── ledger_account.ex          # 🟨 aggregate: OPEN · CLOSED (D5)
     ├── ledger_entry.ex            # DEBIT/CREDIT value object
     ├── commands/ · events/        # 🟦 🟧
-    └── projections/               # 🟩 LedgerAccountsView, BalanceView, StatementView, TrialBalanceView
+    ├── projections/               # 🟩 read-model schemas: LedgerAccountsView, BalanceView, StatementView, TrialBalanceView
+    └── projectors/                # 🟩 one projector per read model (D11)
 ```
 
 Each service has the same setup: Phoenix API, Ecto for the read models, Commanded with a

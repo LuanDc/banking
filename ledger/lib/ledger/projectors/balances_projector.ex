@@ -1,4 +1,4 @@
-defmodule Ledger.Projections.BalancesProjector do
+defmodule Ledger.Projectors.BalancesProjector do
   @moduledoc """
   Projects booked batches into `account_balances`, the BalanceView (README, section 7).
   """

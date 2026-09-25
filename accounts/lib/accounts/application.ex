@@ -33,9 +33,9 @@ defmodule Accounts.Application do
   defp projection_children do
     if Application.get_env(:accounts, :start_projections, true) do
       [
-        Accounts.Projections.CustomerAccountsProjector,
-        Accounts.Projections.ReservationsProjector,
-        Accounts.Projections.CreditsProjector
+        Accounts.Projectors.CustomerAccountsProjector,
+        Accounts.Projectors.ReservationsProjector,
+        Accounts.Projectors.CreditsProjector
       ]
     else
       []

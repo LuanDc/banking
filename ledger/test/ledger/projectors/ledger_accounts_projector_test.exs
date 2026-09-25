@@ -1,11 +1,11 @@
-defmodule Ledger.Projections.LedgerAccountsProjectorTest do
+defmodule Ledger.Projectors.LedgerAccountsProjectorTest do
   # Not async: every test writes the same row of projection_versions.
   use Ledger.DataCase, async: false
 
   alias Ledger.Events.LedgerAccountClosed
   alias Ledger.Events.LedgerAccountOpened
   alias Ledger.Projections.LedgerAccount
-  alias Ledger.Projections.LedgerAccountsProjector
+  alias Ledger.Projectors.LedgerAccountsProjector
 
   @opened_at ~U[2026-09-25 12:00:00.000000Z]
   @closed_at ~U[2026-09-26 12:00:00.000000Z]
