@@ -11,7 +11,7 @@ defmodule Ledger.Projections.StatementProjector do
   alias Ledger.Events.LedgerBatchBooked
   alias Ledger.Projections.StatementEntry
 
-  project(%LedgerBatchBooked{} = event, metadata, fn multi ->
+  project %LedgerBatchBooked{} = event, metadata, fn multi ->
     entries =
       event.entries
       |> Enum.with_index()
@@ -28,7 +28,7 @@ defmodule Ledger.Projections.StatementProjector do
       end)
 
     Ecto.Multi.insert_all(multi, :ledger_entries, StatementEntry, entries)
-  end)
+  end
 
   # `mix commanded.reset` calls this before replaying the event store from the origin (README,
   # D11): the read model and its version start empty.

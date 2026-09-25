@@ -25,7 +25,7 @@ defmodule Accounts.Projections.CustomerAccountsProjector do
   alias Accounts.Projections.CustomerAccount
   alias Accounts.Projections.StatusChange
 
-  project(%CustomerAccountOpened{} = event, metadata, fn multi ->
+  project %CustomerAccountOpened{} = event, metadata, fn multi ->
     multi
     |> Ecto.Multi.insert(:customer_account, %CustomerAccount{
       account_id: event.account_id,
@@ -35,45 +35,45 @@ defmodule Accounts.Projections.CustomerAccountsProjector do
       updated_at: metadata.created_at
     })
     |> record_change(event, metadata, :pending_kyc, nil)
-  end)
+  end
 
-  project(%CustomerAccountActivated{} = event, metadata, fn multi ->
+  project %CustomerAccountActivated{} = event, metadata, fn multi ->
     change_status(multi, event, metadata, :active, nil)
-  end)
+  end
 
-  project(%CustomerAccountBlocked{} = event, metadata, fn multi ->
+  project %CustomerAccountBlocked{} = event, metadata, fn multi ->
     change_status(multi, event, metadata, :blocked, event.reason)
-  end)
+  end
 
-  project(%CustomerAccountUnblocked{} = event, metadata, fn multi ->
+  project %CustomerAccountUnblocked{} = event, metadata, fn multi ->
     change_status(multi, event, metadata, :active, nil)
-  end)
+  end
 
-  project(%CustomerAccountFrozen{} = event, metadata, fn multi ->
+  project %CustomerAccountFrozen{} = event, metadata, fn multi ->
     change_status(multi, event, metadata, :frozen, event.reason)
-  end)
+  end
 
-  project(%CustomerAccountUnfrozen{} = event, metadata, fn multi ->
+  project %CustomerAccountUnfrozen{} = event, metadata, fn multi ->
     change_status(multi, event, metadata, :active, nil)
-  end)
+  end
 
-  project(%CustomerAccountClosed{} = event, metadata, fn multi ->
+  project %CustomerAccountClosed{} = event, metadata, fn multi ->
     multi
     |> change_status(event, metadata, :closed, nil)
     |> Ecto.Multi.update_all(:closed_at, account(event), set: [closed_at: metadata.created_at])
-  end)
+  end
 
-  project(%CreditPosted{} = event, metadata, fn multi ->
+  project %CreditPosted{} = event, metadata, fn multi ->
     change_balance(multi, event, metadata, event.amount)
-  end)
+  end
 
-  project(%BalanceReserved{} = event, metadata, fn multi ->
+  project %BalanceReserved{} = event, metadata, fn multi ->
     change_balance(multi, event, metadata, -event.amount)
-  end)
+  end
 
-  project(%BalanceReleased{} = event, metadata, fn multi ->
+  project %BalanceReleased{} = event, metadata, fn multi ->
     change_balance(multi, event, metadata, event.amount)
-  end)
+  end
 
   defp change_balance(multi, event, metadata, delta) do
     Ecto.Multi.update_all(multi, :customer_account, account(event),

@@ -11,7 +11,7 @@ defmodule Ledger.Projections.BalancesProjector do
   alias Ledger.Events.LedgerBatchBooked
   alias Ledger.Projections.AccountBalance
 
-  project(%LedgerBatchBooked{} = event, metadata, fn multi ->
+  project %LedgerBatchBooked{} = event, metadata, fn multi ->
     Ecto.Multi.insert_all(
       multi,
       :account_balances,
@@ -29,7 +29,7 @@ defmodule Ledger.Projections.BalancesProjector do
           ]
         )
     )
-  end)
+  end
 
   # One row per account: an upsert cannot touch the same row twice in one statement.
   defp totals_by_account(entries, booked_at) do

@@ -15,7 +15,7 @@ defmodule Accounts.Projections.ReservationsProjector do
   alias Accounts.Events.ReservationConfirmed
   alias Accounts.Projections.Reservation
 
-  project(%BalanceReserved{} = event, metadata, fn multi ->
+  project %BalanceReserved{} = event, metadata, fn multi ->
     Ecto.Multi.insert(multi, :reservation, %Reservation{
       account_id: event.account_id,
       correlation_id: event.correlation_id,
@@ -23,9 +23,9 @@ defmodule Accounts.Projections.ReservationsProjector do
       status: :open,
       reserved_at: metadata.created_at
     })
-  end)
+  end
 
-  project(%BalanceReservationRejected{} = event, metadata, fn multi ->
+  project %BalanceReservationRejected{} = event, metadata, fn multi ->
     Ecto.Multi.insert(multi, :reservation, %Reservation{
       account_id: event.account_id,
       correlation_id: event.correlation_id,
@@ -34,15 +34,15 @@ defmodule Accounts.Projections.ReservationsProjector do
       reason: to_string(event.reason),
       reserved_at: metadata.created_at
     })
-  end)
+  end
 
-  project(%ReservationConfirmed{} = event, metadata, fn multi ->
+  project %ReservationConfirmed{} = event, metadata, fn multi ->
     settle(multi, event, metadata, :confirmed)
-  end)
+  end
 
-  project(%BalanceReleased{} = event, metadata, fn multi ->
+  project %BalanceReleased{} = event, metadata, fn multi ->
     settle(multi, event, metadata, :released)
-  end)
+  end
 
   defp settle(multi, event, metadata, status) do
     Ecto.Multi.update_all(

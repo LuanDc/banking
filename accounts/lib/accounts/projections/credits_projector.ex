@@ -15,12 +15,12 @@ defmodule Accounts.Projections.CreditsProjector do
   alias Accounts.Events.CreditRejected
   alias Accounts.Projections.Credit
 
-  project(%CreditAuthorized{} = event, metadata, fn multi ->
+  project %CreditAuthorized{} = event, metadata, fn multi ->
     credit = %{new_credit(event) | status: :authorized, authorized_at: metadata.created_at}
     Ecto.Multi.insert(multi, :credit, credit)
-  end)
+  end
 
-  project(%CreditRejected{} = event, metadata, fn multi ->
+  project %CreditRejected{} = event, metadata, fn multi ->
     credit = %{
       new_credit(event)
       | status: :rejected,
@@ -29,20 +29,20 @@ defmodule Accounts.Projections.CreditsProjector do
     }
 
     Ecto.Multi.insert(multi, :credit, credit)
-  end)
+  end
 
   # README, D2: a credit from a settlement account is posted with no authorization first, so
   # the row may not exist yet. An authorized one keeps its authorized_at.
-  project(%CreditPosted{} = event, metadata, fn multi ->
+  project %CreditPosted{} = event, metadata, fn multi ->
     credit = %{new_credit(event) | status: :posted, settled_at: metadata.created_at}
 
     Ecto.Multi.insert(multi, :credit, credit,
       conflict_target: [:account_id, :correlation_id],
       on_conflict: {:replace, [:status, :settled_at]}
     )
-  end)
+  end
 
-  project(%CreditCancelled{} = event, metadata, fn multi ->
+  project %CreditCancelled{} = event, metadata, fn multi ->
     Ecto.Multi.update_all(
       multi,
       :credit,
@@ -51,7 +51,7 @@ defmodule Accounts.Projections.CreditsProjector do
       ),
       set: [status: :cancelled, settled_at: metadata.created_at]
     )
-  end)
+  end
 
   defp new_credit(event) do
     %Credit{

@@ -16,22 +16,22 @@ defmodule Ledger.Projections.LedgerAccountsProjector do
   alias Ledger.Events.LedgerAccountOpened
   alias Ledger.Projections.LedgerAccount
 
-  project(%LedgerAccountOpened{} = event, metadata, fn multi ->
+  project %LedgerAccountOpened{} = event, metadata, fn multi ->
     Ecto.Multi.insert(multi, :ledger_account, %LedgerAccount{
       account_id: event.account_id,
       status: :open,
       opened_at: metadata.created_at
     })
-  end)
+  end
 
-  project(%LedgerAccountClosed{} = event, metadata, fn multi ->
+  project %LedgerAccountClosed{} = event, metadata, fn multi ->
     Ecto.Multi.update_all(
       multi,
       :ledger_account,
       from(a in LedgerAccount, where: a.account_id == ^event.account_id),
       set: [status: :closed, closed_at: metadata.created_at]
     )
-  end)
+  end
 
   # `mix commanded.reset` calls this before replaying the event store from the origin (README,
   # D11): the read model and its version start empty.
