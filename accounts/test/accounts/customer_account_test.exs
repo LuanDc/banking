@@ -244,7 +244,35 @@ defmodule Accounts.CustomerAccountTest do
     end
 
     test "ignores a repeated command for a reservation that is already open" do
-      account = %CustomerAccount{active_account(600) | reservations: %{"corr-1" => 400}}
+      reserved = reserve(active_account(1_000), 400)
+      account = CustomerAccount.apply(active_account(1_000), reserved)
+
+      assert [] = reserve(account, 400)
+    end
+
+    test "ignores a repeated command for a reservation it already rejected" do
+      rejection = reserve(active_account(100), 400)
+      account = CustomerAccount.apply(active_account(100), rejection)
+
+      # The balance arrived in the meantime: the saga was still decided, and stays rejected.
+      account = %CustomerAccount{account | available_balance: 1_000}
+
+      assert [] = reserve(account, 400)
+    end
+
+    test "ignores a repeated command for a reservation already settled" do
+      reserved = reserve(active_account(1_000), 400)
+
+      confirmed = %ReservationConfirmed{
+        account_id: "acc-1",
+        correlation_id: "corr-1",
+        amount: 400
+      }
+
+      account =
+        active_account(1_000)
+        |> CustomerAccount.apply(reserved)
+        |> CustomerAccount.apply(confirmed)
 
       assert [] = reserve(account, 400)
     end
@@ -454,9 +482,7 @@ defmodule Accounts.CustomerAccountTest do
   end
 
   describe "applying BalanceReservationRejected" do
-    test "leaves the account unchanged" do
-      account = active_account(1_000)
-
+    test "holds no balance, but remembers the rejection" do
       event = %BalanceReservationRejected{
         account_id: "acc-1",
         amount: 1_001,
@@ -464,7 +490,11 @@ defmodule Accounts.CustomerAccountTest do
         reason: :insufficient_balance
       }
 
-      assert CustomerAccount.apply(account, event) == account
+      assert %CustomerAccount{available_balance: 1_000, reservations: reservations} =
+               account = CustomerAccount.apply(active_account(1_000), event)
+
+      assert reservations == %{}
+      assert MapSet.member?(account.decided_reservations, "corr-1")
     end
   end
 

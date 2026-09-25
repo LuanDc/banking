@@ -37,6 +37,7 @@ defmodule Accounts.CustomerAccount do
     :status,
     available_balance: 0,
     reservations: %{},
+    decided_reservations: MapSet.new(),
     pending_credits: %{},
     posted_credits: MapSet.new()
   ]
@@ -102,27 +103,13 @@ defmodule Accounts.CustomerAccount do
     end
   end
 
-  # README, D4: a repeated command for an open reservation reserves nothing.
-  def execute(%__MODULE__{reservations: reservations}, %ReserveBalance{correlation_id: id})
-      when is_map_key(reservations, id),
-      do: []
-
   def execute(%__MODULE__{} = account, %ReserveBalance{} = command) do
-    case check_reservation(account, command.amount) do
-      :ok ->
-        %BalanceReserved{
-          account_id: command.account_id,
-          amount: command.amount,
-          correlation_id: command.correlation_id
-        }
-
-      {:error, reason} ->
-        %BalanceReservationRejected{
-          account_id: command.account_id,
-          amount: command.amount,
-          correlation_id: command.correlation_id,
-          reason: reason
-        }
+    # README, D4: a reservation is decided once. A repeated command reserves nothing, whether
+    # the reservation is open, settled or was rejected, even if the balance arrived since.
+    if MapSet.member?(account.decided_reservations, command.correlation_id) do
+      []
+    else
+      decide_reservation(account, command)
     end
   end
 
@@ -210,11 +197,17 @@ defmodule Accounts.CustomerAccount do
     %__MODULE__{
       account
       | available_balance: account.available_balance - event.amount,
-        reservations: Map.put(account.reservations, event.correlation_id, event.amount)
+        reservations: Map.put(account.reservations, event.correlation_id, event.amount),
+        decided_reservations: MapSet.put(account.decided_reservations, event.correlation_id)
     }
   end
 
-  def apply(%__MODULE__{} = account, %BalanceReservationRejected{}), do: account
+  def apply(%__MODULE__{} = account, %BalanceReservationRejected{} = event) do
+    %__MODULE__{
+      account
+      | decided_reservations: MapSet.put(account.decided_reservations, event.correlation_id)
+    }
+  end
 
   def apply(%__MODULE__{} = account, %CreditAuthorized{} = event) do
     %__MODULE__{
@@ -251,6 +244,25 @@ defmodule Accounts.CustomerAccount do
       | available_balance: account.available_balance + event.amount,
         reservations: Map.delete(account.reservations, event.correlation_id)
     }
+  end
+
+  defp decide_reservation(account, command) do
+    case check_reservation(account, command.amount) do
+      :ok ->
+        %BalanceReserved{
+          account_id: command.account_id,
+          amount: command.amount,
+          correlation_id: command.correlation_id
+        }
+
+      {:error, reason} ->
+        %BalanceReservationRejected{
+          account_id: command.account_id,
+          amount: command.amount,
+          correlation_id: command.correlation_id,
+          reason: reason
+        }
+    end
   end
 
   defp check_reservation(account, amount) do
