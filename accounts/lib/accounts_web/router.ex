@@ -8,6 +8,7 @@ defmodule AccountsWeb.Router do
   scope "/api", AccountsWeb do
     pipe_through :api
 
+    post "/accounts", AccountController, :create
     get "/accounts/:account_id", AccountController, :show
   end
 end

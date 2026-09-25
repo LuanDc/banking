@@ -4,4 +4,6 @@ defmodule Accounts.Commands.ActivateCustomerAccount do
   """
 
   defstruct [:account_id]
+
+  use ExConstructor
 end

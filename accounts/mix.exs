@@ -65,6 +65,7 @@ defmodule Accounts.MixProject do
       {:commanded_eventstore_adapter, "~> 1.4"},
       {:eventstore, "~> 1.4"},
       {:commanded_ecto_projections, "~> 1.4"},
+      {:exconstructor, "~> 1.3"},
 
       # Messaging
       {:amqp, "~> 4.2"},

@@ -4,4 +4,6 @@ defmodule Accounts.Commands.BlockCustomerAccount do
   """
 
   defstruct [:account_id, :reason]
+
+  use ExConstructor
 end

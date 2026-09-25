@@ -1,6 +1,8 @@
 defmodule AccountsWeb.AccountJSON do
   alias Accounts.Projections.CustomerAccount
 
+  def created(%{account: account}), do: account
+
   def show(%{account: account}), do: data(account)
 
   def data(%CustomerAccount{} = account) do

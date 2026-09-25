@@ -4,4 +4,6 @@ defmodule Accounts.Commands.CloseCustomerAccount do
   """
 
   defstruct [:account_id]
+
+  use ExConstructor
 end

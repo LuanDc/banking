@@ -4,4 +4,9 @@ defmodule Accounts.Commands.OpenCustomerAccount do
   """
 
   defstruct [:account_id, :customer_id]
+
+  use ExConstructor
+
+  @doc "Gives the account a new id: the server names accounts, not the client."
+  def generate_uuid(%__MODULE__{} = command), do: %{command | account_id: Ecto.UUID.generate()}
 end

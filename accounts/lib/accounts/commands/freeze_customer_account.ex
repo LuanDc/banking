@@ -4,4 +4,6 @@ defmodule Accounts.Commands.FreezeCustomerAccount do
   """
 
   defstruct [:account_id, :reason]
+
+  use ExConstructor
 end
