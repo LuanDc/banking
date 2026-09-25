@@ -19,6 +19,9 @@ config :ledger, Ledger.EventStore,
   database: "ledger_eventstore_dev",
   pool_size: 10
 
+# RabbitMQ from docker-compose.yml.
+config :ledger, Ledger.Messaging.CommandsConsumer, url: "amqp://banking:banking@localhost:5672"
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

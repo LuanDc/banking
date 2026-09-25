@@ -65,6 +65,9 @@ defmodule Ledger.MixProject do
       {:commanded_eventstore_adapter, "~> 1.4"},
       {:eventstore, "~> 1.4"},
 
+      # Messaging
+      {:broadway_rabbitmq, "~> 0.8.2"},
+
       # Static analysis & security
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
@@ -87,7 +90,8 @@ defmodule Ledger.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get", "ecto.setup", "event_store.setup"],
+      # The event store comes first: the seeds in ecto.setup start the app, and with it Commanded.
+      setup: ["deps.get", "event_store.setup", "ecto.setup"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       "event_store.setup": ["event_store.create", "event_store.init"],

@@ -23,6 +23,9 @@ config :ledger, Ledger.EventStore,
   database: "ledger_eventstore_test#{System.get_env("MIX_TEST_PARTITION")}",
   pool_size: 2
 
+# The commands pipeline runs without a broker: tests feed it with Broadway.test_message/3.
+config :ledger, Ledger.Messaging.CommandsConsumer, producer: {Broadway.DummyProducer, []}
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :ledger, LedgerWeb.Endpoint,

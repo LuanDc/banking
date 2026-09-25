@@ -13,8 +13,8 @@ defmodule Ledger.Application do
       {DNSCluster, query: Application.get_env(:ledger, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Ledger.PubSub},
       Ledger.App,
-      # Start a worker by calling: Ledger.Worker.start_link(arg)
-      # {Ledger.Worker, arg},
+      # Commands from other services, dispatched through Ledger.App (README, D3).
+      Ledger.Messaging.CommandsConsumer,
       # Start to serve requests, typically the last entry
       LedgerWeb.Endpoint
     ]

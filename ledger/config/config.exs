@@ -20,6 +20,12 @@ config :ledger, Ledger.App,
     event_store: Ledger.EventStore
   ]
 
+# Commands from other services arrive on the queue the Ledger owns; a message that fails is
+# dead-lettered instead of requeued (README, D3 and D10).
+config :ledger, Ledger.Messaging.CommandsConsumer,
+  queue: "ledger.commands",
+  dead_letter_queue: "ledger.commands.dead"
+
 # Configures the endpoint
 config :ledger, LedgerWeb.Endpoint,
   url: [host: "localhost"],
