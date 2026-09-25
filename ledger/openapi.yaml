@@ -3,8 +3,8 @@ info:
   title: Ledger API
   version: 0.1.0
   description: |
-    Proposed HTTP API of the Ledger Context (README, section 4). **None of these endpoints exists
-    yet.**
+    HTTP API of the Ledger Context (README, section 4). This file is the source of truth (D12):
+    the controller tests validate every response against it.
 
     The API is read-only. The Ledger's commands (`OpenLedgerAccount`, `CloseLedgerAccount`,
     `BookTransactionBatch`) arrive only through its RabbitMQ contract (D3, D10), so no entry is
@@ -95,6 +95,13 @@ paths:
                     type: [string, "null"]
                     description: Pass as `after` for the next page. It is null on the last page.
         "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: "`from`, `to`, `limit` or `after` is invalid. `code` is `invalid_query`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                errors: { code: invalid_query, detail: A query parameter is invalid. }
 
   /api/batches/{batch_id}:
     parameters:
