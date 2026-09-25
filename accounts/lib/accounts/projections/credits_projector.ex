@@ -15,11 +15,9 @@ defmodule Accounts.Projections.CreditsProjector do
   alias Accounts.Events.CreditRejected
   alias Accounts.Projections.Credit
 
-  # The aggregate decides a redelivered AuthorizeCredit again, under the same correlation_id:
-  # the latest decision replaces the row.
   project(%CreditAuthorized{} = event, metadata, fn multi ->
     credit = %{new_credit(event) | status: :authorized, authorized_at: metadata.created_at}
-    upsert(multi, credit, [:amount, :status, :reason, :authorized_at, :settled_at])
+    Ecto.Multi.insert(multi, :credit, credit)
   end)
 
   project(%CreditRejected{} = event, metadata, fn multi ->
@@ -30,14 +28,18 @@ defmodule Accounts.Projections.CreditsProjector do
         settled_at: metadata.created_at
     }
 
-    upsert(multi, credit, [:amount, :status, :reason, :authorized_at, :settled_at])
+    Ecto.Multi.insert(multi, :credit, credit)
   end)
 
   # README, D2: a credit from a settlement account is posted with no authorization first, so
   # the row may not exist yet. An authorized one keeps its authorized_at.
   project(%CreditPosted{} = event, metadata, fn multi ->
     credit = %{new_credit(event) | status: :posted, settled_at: metadata.created_at}
-    upsert(multi, credit, [:status, :settled_at])
+
+    Ecto.Multi.insert(multi, :credit, credit,
+      conflict_target: [:account_id, :correlation_id],
+      on_conflict: {:replace, [:status, :settled_at]}
+    )
   end)
 
   project(%CreditCancelled{} = event, metadata, fn multi ->
@@ -57,13 +59,6 @@ defmodule Accounts.Projections.CreditsProjector do
       correlation_id: event.correlation_id,
       amount: event.amount
     }
-  end
-
-  defp upsert(multi, credit, replace) do
-    Ecto.Multi.insert(multi, :credit, credit,
-      conflict_target: [:account_id, :correlation_id],
-      on_conflict: {:replace, replace}
-    )
   end
 
   # `mix commanded.reset` calls this before replaying the event store from the origin (README,

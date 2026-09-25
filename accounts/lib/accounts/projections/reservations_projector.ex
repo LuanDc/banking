@@ -16,7 +16,7 @@ defmodule Accounts.Projections.ReservationsProjector do
   alias Accounts.Projections.Reservation
 
   project(%BalanceReserved{} = event, metadata, fn multi ->
-    upsert(multi, %Reservation{
+    Ecto.Multi.insert(multi, :reservation, %Reservation{
       account_id: event.account_id,
       correlation_id: event.correlation_id,
       amount: event.amount,
@@ -26,7 +26,7 @@ defmodule Accounts.Projections.ReservationsProjector do
   end)
 
   project(%BalanceReservationRejected{} = event, metadata, fn multi ->
-    upsert(multi, %Reservation{
+    Ecto.Multi.insert(multi, :reservation, %Reservation{
       account_id: event.account_id,
       correlation_id: event.correlation_id,
       amount: event.amount,
@@ -35,15 +35,6 @@ defmodule Accounts.Projections.ReservationsProjector do
       reserved_at: metadata.created_at
     })
   end)
-
-  # The aggregate keeps no trace of a rejection, so a redelivered or retried ReserveBalance
-  # decides again under the same correlation_id: the latest decision replaces the row.
-  defp upsert(multi, reservation) do
-    Ecto.Multi.insert(multi, :reservation, reservation,
-      conflict_target: [:account_id, :correlation_id],
-      on_conflict: {:replace, [:amount, :status, :reason, :reserved_at, :settled_at]}
-    )
-  end
 
   project(%ReservationConfirmed{} = event, metadata, fn multi ->
     settle(multi, event, metadata, :confirmed)

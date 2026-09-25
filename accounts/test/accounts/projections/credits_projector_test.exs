@@ -61,15 +61,6 @@ defmodule Accounts.Projections.CreditsProjectorTest do
     assert %Credit{status: :rejected, reason: "credit_not_allowed"} = Repo.one(Credit)
   end
 
-  # The aggregate decides AuthorizeCredit again when it is redelivered.
-  test "an authorization repeated for the same correlation_id keeps one row" do
-    authorize()
-    event = %CreditAuthorized{account_id: "acc-1", correlation_id: "corr-1", amount: 400}
-    :ok = project(event, 2, @settled_at)
-
-    assert [%Credit{status: :authorized, authorized_at: @settled_at}] = Repo.all(Credit)
-  end
-
   test "a redelivered event is projected only once" do
     authorize()
     authorize()

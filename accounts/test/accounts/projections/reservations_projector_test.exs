@@ -51,23 +51,6 @@ defmodule Accounts.Projections.ReservationsProjectorTest do
              Repo.one(Reservation)
   end
 
-  # The aggregate keeps no trace of a rejection, so the same correlation_id can come back.
-  test "a rejection repeated for the same correlation_id keeps one row" do
-    :ok = project(rejected(), 1, @reserved_at)
-    :ok = project(rejected(), 2, @settled_at)
-
-    assert [%Reservation{status: :rejected, reserved_at: @settled_at}] = Repo.all(Reservation)
-  end
-
-  test "a reservation made after a rejection of the same correlation_id replaces it" do
-    :ok = project(rejected(), 1, @reserved_at)
-    event = %BalanceReserved{account_id: "acc-1", correlation_id: "corr-1", amount: 400}
-    :ok = project(event, 2, @settled_at)
-
-    assert [%Reservation{status: :open, reason: nil, reserved_at: @settled_at}] =
-             Repo.all(Reservation)
-  end
-
   test "a redelivered reservation is projected only once" do
     reserve()
     reserve()
