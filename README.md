@@ -389,11 +389,11 @@ that contract. The dependency runs one way only (D3, D5).
 
 | Command | Aggregate | Success event | Rejection event/error | Guard |
 | --- | --- | --- | --- | --- |
-| `OpenCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountOpened` | account already exists | — |
+| `OpenCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountOpened` | account already exists, no `customer_id` | — |
 | `ActivateCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountActivated` | rejected | state = `PENDING_KYC` |
-| `BlockCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountBlocked` | rejected | state = `ACTIVE` |
+| `BlockCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountBlocked` | rejected | state = `ACTIVE`, a reason |
 | `UnblockCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountUnblocked` | rejected | state = `BLOCKED` |
-| `FreezeCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountFrozen` ⊕ | rejected | state = `ACTIVE` |
+| `FreezeCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountFrozen` ⊕ | rejected | state = `ACTIVE`, a reason |
 | `UnfreezeCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountUnfrozen` ⊕ | rejected | state = `FROZEN` |
 | `CloseCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountClosed` ⊕ | rejected | state ∈ {`ACTIVE`, `BLOCKED`}, zero available balance, no open reservation, no pending credit (D8) |
 | `ReserveBalance` ⊕ | `CustomerAccount` | `BalanceReserved` | `BalanceReservationRejected` ⊕ | `ACTIVE` + available balance |
@@ -402,6 +402,10 @@ that contract. The dependency runs one way only (D3, D5).
 | `AuthorizeCredit` ⊕ | `CustomerAccount` | `CreditAuthorized` ⊕ | `CreditRejected` ⊕ | matrix allows credit: `ACTIVE`, `BLOCKED` (D5) |
 | `PostCredit` ⊕ | `CustomerAccount` | `CreditPosted` ⊕ | — (a posted `correlation_id` is ignored, D4) | none: mirrors a credit the Ledger booked (D2) |
 | `CancelCredit` ⊕ | `CustomerAccount` | `CreditCancelled` ⊕ | — (an unknown `correlation_id` is ignored, D4) | pending credit exists |
+
+A lifecycle command other than `OpenCustomerAccount` on an account that was never opened is
+rejected as `account_not_found` rather than `invalid_transition`, which the API returns as 404
+(D12).
 
 ### Ledger
 

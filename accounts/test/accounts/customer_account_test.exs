@@ -199,6 +199,45 @@ defmodule Accounts.CustomerAccountTest do
     end
   end
 
+  describe "required fields" do
+    test "an account opens only for a customer" do
+      for customer_id <- [nil, ""] do
+        command = %OpenCustomerAccount{account_id: "acc-1", customer_id: customer_id}
+
+        assert {:error, :customer_id_required} =
+                 CustomerAccount.execute(%CustomerAccount{}, command)
+      end
+    end
+
+    test "blocking and freezing need a reason, since they take money away from the customer" do
+      account = %CustomerAccount{account_id: "acc-1", status: :active}
+
+      for reason <- [nil, ""],
+          command <- [
+            %BlockCustomerAccount{account_id: "acc-1", reason: reason},
+            %FreezeCustomerAccount{account_id: "acc-1", reason: reason}
+          ] do
+        assert {:error, :reason_required} = CustomerAccount.execute(account, command)
+      end
+    end
+  end
+
+  describe "an account that was never opened" do
+    test "rejects every lifecycle command as not found, rather than as an invalid transition" do
+      for command <- [
+            %ActivateCustomerAccount{account_id: "acc-1"},
+            %BlockCustomerAccount{account_id: "acc-1", reason: "suspected fraud"},
+            %UnblockCustomerAccount{account_id: "acc-1"},
+            %FreezeCustomerAccount{account_id: "acc-1", reason: "court order"},
+            %UnfreezeCustomerAccount{account_id: "acc-1"},
+            %CloseCustomerAccount{account_id: "acc-1"}
+          ] do
+        assert {:error, :account_not_found} =
+                 CustomerAccount.execute(%CustomerAccount{}, command)
+      end
+    end
+  end
+
   describe "ReserveBalance" do
     test "emits BalanceReserved for an active account with enough available balance" do
       account = %CustomerAccount{account_id: "acc-1", status: :active, available_balance: 1_000}

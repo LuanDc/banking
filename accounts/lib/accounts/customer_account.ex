@@ -63,6 +63,10 @@ defmodule Accounts.CustomerAccount do
 
   @lifecycle_events @transitions |> Map.keys() |> Enum.map(&elem(&1, 1)) |> Enum.uniq()
 
+  def execute(%__MODULE__{status: nil}, %OpenCustomerAccount{customer_id: customer_id})
+      when customer_id in [nil, ""],
+      do: {:error, :customer_id_required}
+
   def execute(%__MODULE__{status: nil}, %OpenCustomerAccount{} = command) do
     %CustomerAccountOpened{account_id: command.account_id, customer_id: command.customer_id}
   end
@@ -74,10 +78,12 @@ defmodule Accounts.CustomerAccount do
   end
 
   def execute(%__MODULE__{} = account, %BlockCustomerAccount{} = command) do
-    transition(account, %CustomerAccountBlocked{
-      account_id: command.account_id,
-      reason: command.reason
-    })
+    event = %CustomerAccountBlocked{account_id: command.account_id, reason: command.reason}
+
+    with :ok <- check_transition(account, event),
+         :ok <- check_reason(command.reason) do
+      event
+    end
   end
 
   def execute(%__MODULE__{} = account, %UnblockCustomerAccount{} = command) do
@@ -85,10 +91,12 @@ defmodule Accounts.CustomerAccount do
   end
 
   def execute(%__MODULE__{} = account, %FreezeCustomerAccount{} = command) do
-    transition(account, %CustomerAccountFrozen{
-      account_id: command.account_id,
-      reason: command.reason
-    })
+    event = %CustomerAccountFrozen{account_id: command.account_id, reason: command.reason}
+
+    with :ok <- check_transition(account, event),
+         :ok <- check_reason(command.reason) do
+      event
+    end
   end
 
   def execute(%__MODULE__{} = account, %UnfreezeCustomerAccount{} = command) do
@@ -309,12 +317,20 @@ defmodule Accounts.CustomerAccount do
     end
   end
 
+  # Blocking and freezing take money away from the customer, so they are explained.
+  defp check_reason(reason) when reason in [nil, ""], do: {:error, :reason_required}
+  defp check_reason(_reason), do: :ok
+
   # README, D1: money is an integer number of cents.
   defp valid_amount?(amount), do: is_integer(amount) and amount > 0
 
   defp transition(account, event) do
     with :ok <- check_transition(account, event), do: event
   end
+
+  # Only OpenCustomerAccount leaves nil, and it does not go through here: any other
+  # lifecycle command reached an account that does not exist.
+  defp check_transition(%__MODULE__{status: nil}, _event), do: {:error, :account_not_found}
 
   defp check_transition(%__MODULE__{status: from}, %event{}) do
     if is_map_key(@transitions, {from, event}), do: :ok, else: {:error, :invalid_transition}
