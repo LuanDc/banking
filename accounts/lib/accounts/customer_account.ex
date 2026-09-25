@@ -39,6 +39,7 @@ defmodule Accounts.CustomerAccount do
     reservations: %{},
     decided_reservations: MapSet.new(),
     pending_credits: %{},
+    decided_credits: MapSet.new(),
     posted_credits: MapSet.new()
   ]
 
@@ -140,21 +141,12 @@ defmodule Accounts.CustomerAccount do
   end
 
   def execute(%__MODULE__{} = account, %AuthorizeCredit{} = command) do
-    case check_credit(account, command.amount) do
-      :ok ->
-        %CreditAuthorized{
-          account_id: command.account_id,
-          amount: command.amount,
-          correlation_id: command.correlation_id
-        }
-
-      {:error, reason} ->
-        %CreditRejected{
-          account_id: command.account_id,
-          amount: command.amount,
-          correlation_id: command.correlation_id,
-          reason: reason
-        }
+    # README, D4: a credit is decided once. A repeated command authorizes nothing, whether the
+    # credit is pending, settled or was rejected, even if the status changed since.
+    if MapSet.member?(account.decided_credits, command.correlation_id) do
+      []
+    else
+      decide_credit(account, command)
     end
   end
 
@@ -212,11 +204,17 @@ defmodule Accounts.CustomerAccount do
   def apply(%__MODULE__{} = account, %CreditAuthorized{} = event) do
     %__MODULE__{
       account
-      | pending_credits: Map.put(account.pending_credits, event.correlation_id, event.amount)
+      | pending_credits: Map.put(account.pending_credits, event.correlation_id, event.amount),
+        decided_credits: MapSet.put(account.decided_credits, event.correlation_id)
     }
   end
 
-  def apply(%__MODULE__{} = account, %CreditRejected{}), do: account
+  def apply(%__MODULE__{} = account, %CreditRejected{} = event) do
+    %__MODULE__{
+      account
+      | decided_credits: MapSet.put(account.decided_credits, event.correlation_id)
+    }
+  end
 
   def apply(%__MODULE__{} = account, %CreditCancelled{} = event) do
     %__MODULE__{
@@ -281,6 +279,25 @@ defmodule Accounts.CustomerAccount do
       map_size(account.reservations) > 0 -> {:error, :open_reservations}
       map_size(account.pending_credits) > 0 -> {:error, :pending_credits}
       true -> :ok
+    end
+  end
+
+  defp decide_credit(account, command) do
+    case check_credit(account, command.amount) do
+      :ok ->
+        %CreditAuthorized{
+          account_id: command.account_id,
+          amount: command.amount,
+          correlation_id: command.correlation_id
+        }
+
+      {:error, reason} ->
+        %CreditRejected{
+          account_id: command.account_id,
+          amount: command.amount,
+          correlation_id: command.correlation_id,
+          reason: reason
+        }
     end
   end
 

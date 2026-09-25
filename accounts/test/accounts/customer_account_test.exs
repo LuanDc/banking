@@ -359,6 +359,33 @@ defmodule Accounts.CustomerAccountTest do
                  authorize_credit(active_account(0), amount)
       end
     end
+
+    test "ignores a repeated command for a credit it already rejected" do
+      frozen = %CustomerAccount{active_account(0) | status: :frozen}
+      account = CustomerAccount.apply(frozen, authorize_credit(frozen, 400))
+
+      # The account was unfrozen in the meantime: the saga was still decided, and stays rejected.
+      account = %CustomerAccount{account | status: :active}
+
+      assert [] = authorize_credit(account, 400)
+    end
+
+    test "ignores a repeated command for a credit already authorized" do
+      account = CustomerAccount.apply(active_account(0), authorize_credit(active_account(0), 400))
+
+      assert [] = authorize_credit(account, 400)
+    end
+
+    test "ignores a repeated command for a credit already cancelled" do
+      cancelled = %CreditCancelled{account_id: "acc-1", correlation_id: "corr-1", amount: 400}
+
+      account =
+        active_account(0)
+        |> CustomerAccount.apply(authorize_credit(active_account(0), 400))
+        |> CustomerAccount.apply(cancelled)
+
+      assert [] = authorize_credit(account, 400)
+    end
   end
 
   describe "PostCredit" do
@@ -530,9 +557,7 @@ defmodule Accounts.CustomerAccountTest do
   end
 
   describe "applying CreditRejected" do
-    test "leaves the account unchanged" do
-      account = active_account(1_000)
-
+    test "holds no pending credit, but remembers the rejection" do
       event = %CreditRejected{
         account_id: "acc-1",
         amount: 400,
@@ -540,7 +565,11 @@ defmodule Accounts.CustomerAccountTest do
         reason: :credit_not_allowed
       }
 
-      assert CustomerAccount.apply(account, event) == account
+      assert %CustomerAccount{available_balance: 1_000, pending_credits: pending} =
+               account = CustomerAccount.apply(active_account(1_000), event)
+
+      assert pending == %{}
+      assert MapSet.member?(account.decided_credits, "corr-1")
     end
   end
 
