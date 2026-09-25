@@ -1,0 +1,18 @@
+defmodule Accounts.AppTest do
+  # Smoke test of the Commanded wiring: router, event store and serializer. The rules
+  # themselves are covered by the pure CustomerAccount tests.
+  use ExUnit.Case, async: false
+
+  @moduletag :integration
+
+  alias Accounts.App
+  alias Accounts.Commands.OpenCustomerAccount
+
+  test "dispatches to CustomerAccount, which is rebuilt from its stored events" do
+    # The event store has no sandbox: a fresh id keeps this stream apart from other runs.
+    command = %OpenCustomerAccount{account_id: Ecto.UUID.generate(), customer_id: "cus-1"}
+
+    assert :ok = App.dispatch(command)
+    assert {:error, :account_already_exists} = App.dispatch(command)
+  end
+end

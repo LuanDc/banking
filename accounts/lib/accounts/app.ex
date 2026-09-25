@@ -7,4 +7,6 @@ defmodule Accounts.App do
   """
 
   use Commanded.Application, otp_app: :accounts
+
+  router(Accounts.Router)
 end
