@@ -563,6 +563,13 @@ At-least-once delivery means every message may arrive twice. The consuming side 
 redelivered `BookTransactionBatch` hits a batch already decided and books nothing, and a redelivered
 `LedgerBatchBooked` or `LedgerBatchRejected` finds the reservation already settled or released.
 
+`CustomerAccount` remembers every reservation and every credit it has decided, by `correlation_id`
+(`decided_reservations`, `decided_credits`). A repeated `ReserveBalance` or `AuthorizeCredit`
+decides nothing, whether the first answer is still open, already settled or was a rejection. A
+rejection is final: if the balance arrived or the account was unfrozen since, a new transfer comes
+with a new `correlation_id`. Without this, a redelivery could reserve money twice after a
+confirmation, or turn a rejected saga into an approved one.
+
 ### D5 · Business rules live in Accounts; Ledger accounts only open and close
 
 - **Account status and every rule tied to it** — the FSM, the debit/credit matrix, the available
@@ -668,9 +675,9 @@ Accounts.EventStore ──┬─> LedgerCommandsPublisher ──> RabbitMQ   (ou
   `projection_versions` row, then the subscription replays from the origin. The subscription's
   position lives in the event store, so deleting rows alone replays nothing.
 - Events carry no timestamp: the `*_at` columns come from the event's `created_at` metadata.
-- A decision the aggregate does not remember — a rejected `ReserveBalance`, an `AuthorizeCredit` —
-  is decided again when redelivered, with a new event under the same `correlation_id`. Those
-  projections upsert by `(account_id, correlation_id)`, and the latest decision wins.
+- The aggregate decides each reservation and credit once (D4), so `reservations` and `credits`
+  get one insert per `correlation_id`. The only upsert is `CreditPosted`, since a credit from a
+  settlement account arrives with no authorization first (D2).
 - `ledger_accounts` is strongly consistent: a command dispatched with `consistency: :strong`
   returns only once the account shows up, which the D5 check will rely on.
 - `account_balances` keeps both totals, and the balance is a generated column
