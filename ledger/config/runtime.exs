@@ -45,7 +45,7 @@ if config_env() == :prod do
       """
 
   config :ledger, Ledger.EventStore,
-    serializer: EventStore.JsonSerializer,
+    serializer: Commanded.Serialization.JsonSerializer,
     url: event_store_url,
     pool_size: String.to_integer(System.get_env("EVENT_STORE_POOL_SIZE") || "10"),
     socket_options: maybe_ipv6

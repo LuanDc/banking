@@ -3,5 +3,6 @@ defmodule Ledger.LedgerEntry do
   One side of a double-entry posting: a debit or a credit of an amount, in cents, to an account.
   """
 
+  @derive Jason.Encoder
   defstruct [:account_id, :type, :amount]
 end

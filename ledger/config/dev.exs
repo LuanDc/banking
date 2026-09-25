@@ -12,7 +12,7 @@ config :ledger, Ledger.Repo,
 
 # The event store keeps its own database, separate from the read models.
 config :ledger, Ledger.EventStore,
-  serializer: EventStore.JsonSerializer,
+  serializer: Commanded.Serialization.JsonSerializer,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
