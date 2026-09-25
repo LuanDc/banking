@@ -33,7 +33,11 @@ defmodule Ledger.Application do
   # turn them off, so no projector consumes the shared test event store on its own.
   defp projection_children do
     if Application.get_env(:ledger, :start_projections, true) do
-      [Ledger.Projections.LedgerAccountsProjector, Ledger.Projections.BalancesProjector]
+      [
+        Ledger.Projections.LedgerAccountsProjector,
+        Ledger.Projections.BalancesProjector,
+        Ledger.Projections.StatementProjector
+      ]
     else
       []
     end
