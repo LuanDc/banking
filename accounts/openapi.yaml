@@ -4,8 +4,8 @@ info:
   version: 0.1.0
   description: |
     HTTP API of the Account Management Context (README, section 3). This file is the source of
-    truth (D12): the controller tests validate every response against it. Operations marked
-    `x-planned: true` are not implemented yet.
+    truth (D12): the controller tests validate every response against it. An operation marked
+    `x-planned: true` is not implemented yet.
 
     - **Commands** are the ones a person starts: opening an account, back-office lifecycle
       transitions, and transfers. Saga steps (`ReserveBalance`, `AuthorizeCredit`,
@@ -218,7 +218,6 @@ paths:
     post:
       tags: [Transfers]
       operationId: transferMoney
-      x-planned: true
       summary: Transfer money between two customer accounts
       description: |
         Starts the saga in section 5 by reserving the amount on the source account. The rest of
@@ -226,9 +225,7 @@ paths:
         asynchronously, so poll `GET /api/transfers/{correlation_id}` for the outcome.
 
         The `Idempotency-Key` becomes the saga's `correlation_id` (D4). A repeated key starts
-        nothing new and returns the first request's outcome.
-
-        Requires the `LedgerRouter` saga, which is not implemented yet.
+        nothing new: it answers 202 with the transfer as it stands.
       parameters:
         - name: Idempotency-Key
           in: header
@@ -255,16 +252,70 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Transfer" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "422":
           description: |
             Invalid request, or the reservation was rejected (`BalanceReservationRejected`).
-            `code` is one of `same_account`, `invalid_amount`,
-            `account_not_active` or `insufficient_balance`.
+            `code` is one of `idempotency_key_required`, `invalid_destination`, `same_account`,
+            `invalid_amount`, `account_not_active` or `insufficient_balance`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
               example:
                 errors: { code: insufficient_balance, detail: The source account has insufficient balance. }
+
+  /api/accounts/{account_id}/deposits:
+    parameters:
+      - $ref: "#/components/parameters/AccountId"
+    post:
+      tags: [Transfers]
+      operationId: depositMoney
+      summary: Receive an inbound PIX into the account
+      description: |
+        Stands in for the payment scheme's anticorruption layer (section 6). An inbound PIX is a
+        credit from the bank's PIX settlement account (D2), so the account authorizes it like
+        any credit: a frozen account refuses it. The Ledger then books it, debiting the
+        settlement account, and the available balance rises once the batch is booked.
+
+        The `Idempotency-Key` becomes the `correlation_id` (D4). A repeated key credits nothing
+        twice.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Client-generated key, used as the `correlation_id`.
+          schema: { $ref: "#/components/schemas/Id" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { $ref: "#/components/schemas/PositiveCents" }
+      responses:
+        "202":
+          description: Credit authorized and sent to the Ledger to be booked.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [correlation_id, account_id, amount]
+                properties:
+                  correlation_id: { $ref: "#/components/schemas/Id" }
+                  account_id: { $ref: "#/components/schemas/Id" }
+                  amount: { $ref: "#/components/schemas/Cents" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422":
+          description: |
+            The credit was rejected (`CreditRejected`). `code` is one of
+            `idempotency_key_required`, `invalid_amount` or `credit_not_allowed`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                errors: { code: credit_not_allowed, detail: The account may not receive money. }
 
   /api/transfers/{correlation_id}:
     parameters:
@@ -275,11 +326,10 @@ paths:
     get:
       tags: [Transfers]
       operationId: getTransfer
-      x-planned: true
       summary: Get a transfer's outcome
       description: |
         Built from the `reservations` and `credits` rows with this `correlation_id`. There is no
-        separate transfer read model.
+        separate transfer read model, and a deposit is not a transfer.
       responses:
         "200":
           description: The transfer.
@@ -506,7 +556,10 @@ components:
             `failed` once it is rejected or released.
         reason:
           type: [string, "null"]
-          description: Why the transfer failed, e.g. `insufficient_balance` or `credit_not_allowed`.
+          description: |
+            Why the transfer failed: the reservation's rejection (e.g. `insufficient_balance`),
+            the credit's (e.g. `credit_not_allowed`), or `batch_rejected` when the Ledger
+            refused the batch.
     Page:
       type: object
       required: [data, next_cursor]

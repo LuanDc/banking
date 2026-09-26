@@ -8,20 +8,27 @@ defmodule Accounts.CustomerAccounts do
   """
 
   alias Accounts.App
+  alias Accounts.BankAccounts
   alias Accounts.Commands.ActivateCustomerAccount
+  alias Accounts.Commands.AuthorizeCredit
   alias Accounts.Commands.BlockCustomerAccount
   alias Accounts.Commands.CloseCustomerAccount
   alias Accounts.Commands.FreezeCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
+  alias Accounts.Commands.ReserveBalance
   alias Accounts.Commands.UnblockCustomerAccount
   alias Accounts.Commands.UnfreezeCustomerAccount
   import Ecto.Query
 
+  alias Accounts.Events.BalanceReservationRejected
+  alias Accounts.Events.BalanceReserved
+  alias Accounts.Events.CreditRejected
   alias Accounts.Projections.Credit
   alias Accounts.Projections.CustomerAccount
   alias Accounts.Projections.Reservation
   alias Accounts.Projections.StatusChange
   alias Accounts.Repo
+  alias Commanded.Commands.ExecutionResult
 
   @default_limit 50
   @max_limit 100
@@ -80,6 +87,54 @@ defmodule Accounts.CustomerAccounts do
     |> App.dispatch()
   end
 
+  @doc """
+  Starts a transfer by reserving `params[\"amount\"]` on `params[\"from_account_id\"]`
+  for `params[\"to_account_id\"]` (README, section 5). The idempotency key is the saga's
+  `correlation_id` (D4): a repeated key starts nothing new and returns the transfer as it stands.
+  """
+  def transfer_money(_params, nil), do: {:error, :idempotency_key_required}
+
+  def transfer_money(params, idempotency_key) do
+    command =
+      params
+      |> Map.put("account_id", params["from_account_id"])
+      |> Map.put("correlation_id", idempotency_key)
+      |> ReserveBalance.new()
+
+    case dispatch_for_events(command) do
+      {:ok, [%BalanceReserved{}]} -> {:ok, pending_transfer(command)}
+      {:ok, [%BalanceReservationRejected{reason: reason}]} -> {:error, reason}
+      {:ok, []} -> current_transfer(command)
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @doc """
+  Receives an inbound PIX of `params[\"amount\"]` into `params[\"account_id\"]`: a credit
+  from the bank's PIX settlement account (README, D2), authorized like any other. The idempotency
+  key is its `correlation_id` (D4): a repeated key credits nothing twice.
+  """
+  def deposit(_params, nil), do: {:error, :idempotency_key_required}
+
+  def deposit(params, idempotency_key) do
+    command =
+      params
+      |> Map.put("correlation_id", idempotency_key)
+      |> Map.put("from_account_id", BankAccounts.pix_settlement())
+      |> AuthorizeCredit.new()
+
+    case dispatch_for_events(command) do
+      {:ok, [%CreditRejected{reason: reason}]} ->
+        {:error, reason}
+
+      {:ok, _authorized_or_repeated} ->
+        {:ok, Map.take(command, [:correlation_id, :account_id, :amount])}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
   def get_customer_account(account_id) do
     case Repo.get(CustomerAccount, account_id) do
       nil -> {:error, :not_found}
@@ -121,6 +176,83 @@ defmodule Accounts.CustomerAccounts do
 
   @doc "A page of the account's credits, like `list_reservations/1`."
   def list_credits(params), do: list_page(Credit, params)
+
+  @doc """
+  A transfer as it stands, read from its reservation and its credit (README, section 5):
+  `pending` while the reservation is open, `completed` once confirmed, `failed` once rejected or
+  released.
+  """
+  def get_transfer(correlation_id) do
+    reservation =
+      Reservation
+      |> where(correlation_id: ^correlation_id)
+      |> Repo.one()
+
+    case reservation do
+      nil ->
+        {:error, :not_found}
+
+      reservation ->
+        credit =
+          Credit
+          |> where(
+            correlation_id: ^correlation_id,
+            account_id: ^(reservation.to_account_id || "")
+          )
+          |> Repo.one()
+
+        {:ok,
+         %{
+           correlation_id: reservation.correlation_id,
+           from_account_id: reservation.account_id,
+           to_account_id: reservation.to_account_id,
+           amount: reservation.amount,
+           status: transfer_status(reservation.status),
+           reason: failure_reason(reservation, credit)
+         }}
+    end
+  end
+
+  # The events a command caused, to answer with its decision: a rejection is an event too.
+  defp dispatch_for_events(command) do
+    with {:ok, %ExecutionResult{events: events}} <-
+           App.dispatch(command, returning: :execution_result) do
+      {:ok, events}
+    end
+  end
+
+  # The read model may not show the first request yet.
+  defp current_transfer(command) do
+    case get_transfer(command.correlation_id) do
+      {:error, :not_found} -> {:ok, pending_transfer(command)}
+      found -> found
+    end
+  end
+
+  defp pending_transfer(command) do
+    %{
+      correlation_id: command.correlation_id,
+      from_account_id: command.account_id,
+      to_account_id: command.to_account_id,
+      amount: command.amount,
+      status: :pending,
+      reason: nil
+    }
+  end
+
+  defp transfer_status(:open), do: :pending
+  defp transfer_status(:confirmed), do: :completed
+  defp transfer_status(_released_or_rejected), do: :failed
+
+  defp failure_reason(%Reservation{status: :rejected, reason: reason}, _credit), do: reason
+
+  defp failure_reason(%Reservation{status: :released}, %Credit{status: :rejected} = credit),
+    do: credit.reason
+
+  defp failure_reason(%Reservation{status: :released}, %Credit{status: :cancelled}),
+    do: "batch_rejected"
+
+  defp failure_reason(_reservation, _credit), do: nil
 
   defp list_page(schema, params) do
     with {:ok, account} <- get_customer_account(params["account_id"]),

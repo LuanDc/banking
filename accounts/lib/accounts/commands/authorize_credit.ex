@@ -5,4 +5,6 @@ defmodule Accounts.Commands.AuthorizeCredit do
   """
 
   defstruct [:account_id, :amount, :correlation_id, :from_account_id]
+
+  use ExConstructor
 end

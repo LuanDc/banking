@@ -4,4 +4,6 @@ defmodule Accounts.Commands.ReserveBalance do
   """
 
   defstruct [:account_id, :amount, :correlation_id, :to_account_id]
+
+  use ExConstructor
 end

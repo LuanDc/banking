@@ -14,6 +14,10 @@ defmodule AccountsWeb.Router do
     get "/accounts/:account_id/status-history", AccountController, :status_history
     get "/accounts/:account_id/reservations", ReservationController, :index
     get "/accounts/:account_id/credits", CreditController, :index
+    post "/accounts/:account_id/deposits", TransferController, :deposit
+
+    post "/transfers", TransferController, :create
+    get "/transfers/:correlation_id", TransferController, :show
 
     post "/accounts/:account_id/activate", LifecycleController, :activate
     post "/accounts/:account_id/block", LifecycleController, :block

@@ -15,7 +15,14 @@ defmodule AccountsWeb.FallbackController do
     pending_credits: :conflict,
     customer_id_required: :unprocessable_entity,
     reason_required: :unprocessable_entity,
-    invalid_query: :unprocessable_entity
+    invalid_query: :unprocessable_entity,
+    idempotency_key_required: :unprocessable_entity,
+    invalid_destination: :unprocessable_entity,
+    same_account: :unprocessable_entity,
+    invalid_amount: :unprocessable_entity,
+    account_not_active: :unprocessable_entity,
+    insufficient_balance: :unprocessable_entity,
+    credit_not_allowed: :unprocessable_entity
   }
 
   @details %{
@@ -27,7 +34,14 @@ defmodule AccountsWeb.FallbackController do
     pending_credits: "The account has pending credits.",
     customer_id_required: "A customer_id is required.",
     reason_required: "A reason is required.",
-    invalid_query: "A query parameter is invalid."
+    invalid_query: "A query parameter is invalid.",
+    idempotency_key_required: "An Idempotency-Key header is required.",
+    invalid_destination: "The transfer needs a destination account.",
+    same_account: "An account cannot transfer to itself.",
+    invalid_amount: "The amount must be a positive integer number of cents.",
+    account_not_active: "The source account may not send money.",
+    insufficient_balance: "The source account has insufficient balance.",
+    credit_not_allowed: "The account may not receive money."
   }
 
   def call(conn, {:error, reason}) when is_map_key(@statuses, reason) do

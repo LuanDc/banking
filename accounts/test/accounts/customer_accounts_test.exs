@@ -94,4 +94,68 @@ defmodule Accounts.CustomerAccountsTest do
       assert credit.id == authorized.id
     end
   end
+
+  describe "get_transfer/1" do
+    test "a transfer is pending while its reservation is open" do
+      reservation = insert(:reservation, to_account_id: "acc-2", status: :open)
+
+      assert {:ok,
+              %{
+                correlation_id: correlation_id,
+                from_account_id: from,
+                to_account_id: "acc-2",
+                amount: 400,
+                status: :pending,
+                reason: nil
+              }} = CustomerAccounts.get_transfer(reservation.correlation_id)
+
+      assert {correlation_id, from} == {reservation.correlation_id, reservation.account_id}
+    end
+
+    test "completes once the reservation is confirmed" do
+      reservation = insert(:reservation, to_account_id: "acc-2", status: :confirmed)
+
+      assert {:ok, %{status: :completed, reason: nil}} =
+               CustomerAccounts.get_transfer(reservation.correlation_id)
+    end
+
+    test "fails with the reservation's rejection" do
+      reservation =
+        insert(:reservation, status: :rejected, reason: "insufficient_balance")
+
+      assert {:ok, %{status: :failed, reason: "insufficient_balance"}} =
+               CustomerAccounts.get_transfer(reservation.correlation_id)
+    end
+
+    test "fails with the credit's rejection once the reservation is released" do
+      reservation = insert(:reservation, to_account_id: "acc-2", status: :released)
+
+      insert(:credit,
+        account_id: "acc-2",
+        correlation_id: reservation.correlation_id,
+        status: :rejected,
+        reason: "credit_not_allowed"
+      )
+
+      assert {:ok, %{status: :failed, reason: "credit_not_allowed"}} =
+               CustomerAccounts.get_transfer(reservation.correlation_id)
+    end
+
+    test "fails as batch_rejected when the Ledger refused the batch" do
+      reservation = insert(:reservation, to_account_id: "acc-2", status: :released)
+
+      insert(:credit,
+        account_id: "acc-2",
+        correlation_id: reservation.correlation_id,
+        status: :cancelled
+      )
+
+      assert {:ok, %{status: :failed, reason: "batch_rejected"}} =
+               CustomerAccounts.get_transfer(reservation.correlation_id)
+    end
+
+    test "is not found without a reservation, e.g. for a deposit" do
+      assert {:error, :not_found} = CustomerAccounts.get_transfer("unknown")
+    end
+  end
 end
