@@ -40,6 +40,12 @@ defmodule Accounts.Handlers.LedgerRouter do
     end)
   end
 
+  # A reservation recorded before reservations named their destination: no saga can finish it,
+  # so it is released rather than holding the balance forever (README, D6).
+  def commands_for(%BalanceReserved{to_account_id: nil} = event) do
+    [%ReleaseBalance{account_id: event.account_id, correlation_id: event.correlation_id}]
+  end
+
   def commands_for(%BalanceReserved{} = event) do
     [
       %AuthorizeCredit{
@@ -51,9 +57,10 @@ defmodule Accounts.Handlers.LedgerRouter do
     ]
   end
 
-  # A credit from a bank account, such as an inbound PIX, reserved nothing to release.
+  # A credit from a bank account, such as an inbound PIX, reserved nothing to release, and neither
+  # did one recorded before credits named their source.
   def commands_for(%CreditRejected{} = event) do
-    if BankAccounts.bank_account?(event.from_account_id) do
+    if event.from_account_id == nil or BankAccounts.bank_account?(event.from_account_id) do
       []
     else
       [%ReleaseBalance{account_id: event.from_account_id, correlation_id: event.correlation_id}]

@@ -55,6 +55,26 @@ defmodule Accounts.Handlers.LedgerRouterTest do
       assert LedgerRouter.commands_for(event) == []
     end
 
+    test "releases a reservation that names no destination, which no saga can finish (D6)" do
+      # Recorded before reservations carried their destination.
+      event = %BalanceReserved{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
+
+      assert LedgerRouter.commands_for(event) == [
+               %ReleaseBalance{account_id: "acc-1", correlation_id: "corr-1"}
+             ]
+    end
+
+    test "releases nothing for a rejected credit that names no source" do
+      # Recorded before credits carried their source.
+      event = %CreditRejected{
+        account_id: "acc-2",
+        correlation_id: "corr-1",
+        reason: :invalid_amount
+      }
+
+      assert LedgerRouter.commands_for(event) == []
+    end
+
     test "leaves a credit authorization to the outbox, which books it in the Ledger" do
       assert LedgerRouter.commands_for(%CreditAuthorized{}) == []
     end
