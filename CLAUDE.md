@@ -46,3 +46,5 @@ decision before changing its area.
 `docker compose up -d` starts Postgres, RabbitMQ (management UI on :15672, user and password
 `banking`) and Swagger UI (:8080). The services run on the host: accounts on :4000 and ledger on
 :4001.
+The Ledger's seeds (`mix run priv/repo/seeds.exs`, part of `mix setup`) open the bank's
+`pix-settlement` account. Deposits need it, since an inbound PIX debits it (D13).

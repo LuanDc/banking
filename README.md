@@ -255,7 +255,7 @@ flowchart TB
         EVX["BalanceReleased ⊕"]:::evt
         CY["ConfirmReservation ⊕"]:::cmd
         EVY["ReservationConfirmed ⊕"]:::evt
-        POL["🟪 LedgerRouter<br/>process manager per correlation_id"]:::pol
+        POL["🟪 LedgerRouter<br/>stateless policy, D13"]:::pol
         CZ["AuthorizeCredit ⊕"]:::cmd
         AGG3["Destination CustomerAccount<br/>guard: matrix allows credit"]:::agg
         EVA["CreditAuthorized ⊕"]:::evt
@@ -420,13 +420,14 @@ rejected as `account_not_found` rather than `invalid_transition`, which the API 
 | Trigger | Policy | Command issued |
 | --- | --- | --- |
 | `BalanceReserved` | `LedgerRouter` (Accounts) | `AuthorizeCredit` ⊕ on the destination account |
-| `CreditAuthorized` ⊕ | `LedgerRouter` (Accounts) | `BookTransactionBatch` ⊕, sent to `Ledger` |
-| `CreditRejected` ⊕ | saga compensation ⊕ | `ReleaseBalance` ⊕ |
-| `CustomerAccountOpened` / `Closed` | chart of accounts ⊕ (Accounts) | `OpenLedgerAccount` / `CloseLedgerAccount` ⊕, sent to `Ledger` |
-| `LedgerBatchBooked` | saga confirmation ⊕ | `ConfirmReservation` ⊕ on the source account |
-| `LedgerBatchBooked` | credit posting ⊕ | `PostCredit` ⊕ on each credited customer account |
-| `LedgerBatchRejected` | saga compensation ⊕ | `ReleaseBalance` ⊕ on the source, `CancelCredit` ⊕ on the destination |
-| KYC approved | account activation ⊕ | `ActivateCustomerAccount` ⊕ |
+| `CreditAuthorized` ⊕ | `LedgerCommandsPublisher`, the outbox (Accounts) | `BookTransactionBatch` ⊕, sent to `Ledger` |
+| `CreditRejected` ⊕ | `LedgerRouter` (Accounts) | `ReleaseBalance` ⊕ on the source, unless it is a bank account |
+| `CustomerAccountOpened` / `Closed` | `LedgerCommandsPublisher` (Accounts) | `OpenLedgerAccount` / `CloseLedgerAccount` ⊕, sent to `Ledger` |
+| `LedgerBatchBooked` / `Rejected` | `LedgerEventsPublisher`, the outbox (Ledger) | published on `ledger.events` |
+| `LedgerBatchBooked` | `LedgerEventsInbox` (Accounts) | `ConfirmReservation` ⊕ on each debited and `PostCredit` ⊕ on each credited customer account |
+| `LedgerBatchRejected` | `LedgerEventsInbox` (Accounts) | `ReleaseBalance` ⊕ on each debited and `CancelCredit` ⊕ on each credited customer account |
+| Inbound PIX | `POST /api/accounts/{id}/deposits`, standing in for the ACL (D13) | `AuthorizeCredit` ⊕ from the PIX settlement account |
+| KYC approved | account activation ⊕ | `ActivateCustomerAccount` ⊕ (today through the back-office endpoint) |
 
 ### Read models
 
@@ -476,13 +477,14 @@ accounts/                          # Account Management Context
     ├── customer_account.ex        # 🟨 aggregate: FSM, transition matrix (section 3.1) and guards
     ├── commands/                  # 🟦 commands (section 7)
     ├── events/                    # 🟧 events (section 7)
-    ├── process_managers/
-    │   └── ledger_router.ex       # 🟪 transfer saga: credit authorization, booking, compensation
+    ├── customer_accounts.ex       # context entry point for the API (D12)
+    ├── bank_accounts.ex           # the bank's own ledger accounts, e.g. PIX settlement (D5)
     ├── projections/               # 🟩 read-model schemas: AccountStatusView, ReservationsView, CreditsView
     ├── handlers/                  # subscribers of the event store
     │   ├── projectors/            # 🟩 one projector per read model (D11)
+    │   ├── ledger_router.ex       # 🟪 transfer saga: credit authorization, compensation (D13)
     │   └── ledger_commands_publisher.ex  # 🟪 outbox: Ledger commands to RabbitMQ (D3)
-    └── messaging/                 # RabbitMQ transport: publisher port, adapter, command contract
+    └── messaging/                 # RabbitMQ transport: publisher, command contract, Ledger events consumer and inbox
 
 ledger/                            # Ledger Context
 ├── openapi.yaml                   # proposed HTTP API (D12)
@@ -492,15 +494,18 @@ ledger/                            # Ledger Context
     ├── ledger_entry.ex            # DEBIT/CREDIT value object
     ├── commands/ · events/        # 🟦 🟧
     ├── projections/               # 🟩 read-model schemas: LedgerAccountsView, BalanceView, StatementView, TrialBalanceView
+    ├── ledger_accounts.ex · transaction_batches.ex  # context entry points for the API (D12)
+    ├── middleware/open_accounts.ex  # the D5 check, before a batch reaches its aggregate
     ├── handlers/
-    │   └── projectors/            # 🟩 one projector per read model (D11)
-    └── messaging/                 # RabbitMQ transport: the commands consumer and inbox
+    │   ├── projectors/            # 🟩 one projector per read model (D11)
+    │   └── ledger_events_publisher.ex  # 🟪 outbox: the Ledger's events to RabbitMQ (D3)
+    └── messaging/                 # RabbitMQ transport: commands consumer and inbox, event publisher
 ```
 
 Each service has the same setup: Phoenix API, Ecto for the read models, Commanded with a
 Postgres event store in its own database (`<App>.App`, `<App>.EventStore`), and the `mix quality`
-gate. The aggregates, the message transport and the projections exist so far; the
-`LedgerRouter` saga is still to come.
+gate. The whole flow of section 5 runs: aggregates, message transport both ways, the
+`LedgerRouter` saga, the projections and the HTTP API.
 
 **An aggregate's rules live in the aggregate.** The FSM is a transition table in
 `CustomerAccount`, `{from status, event} => to status`, next to the commands it guards, rather than
@@ -689,10 +694,10 @@ Accounts.EventStore ──┬─> LedgerCommandsPublisher ──> RabbitMQ   (ou
   position lives in the event store, so deleting rows alone replays nothing.
 - Events carry no timestamp: the `*_at` columns come from the event's `created_at` metadata.
 - The aggregate decides each reservation and credit once (D4), so `reservations` and `credits`
-  get one insert per `correlation_id`. The only upsert is `CreditPosted`, since a credit from a
-  settlement account arrives with no authorization first (D2).
+  get one insert per `correlation_id`. The only upsert is `CreditPosted`, for a credit posted with
+  no authorization first.
 - `ledger_accounts` is strongly consistent: a command dispatched with `consistency: :strong`
-  returns only once the account shows up, which the D5 check will rely on.
+  returns only once the account shows up, which the D5 check relies on.
 - `account_balances` keeps both totals, and the balance is a generated column
   `credit_total - debit_total`, so no sign convention per kind of account is needed: the PIX
   settlement account goes negative, a customer's account positive. `trial_balance` is a SQL view
@@ -706,8 +711,7 @@ Accounts.EventStore ──┬─> LedgerCommandsPublisher ──> RabbitMQ   (ou
 The API is described by OpenAPI 3.1 specs, one per service: `accounts/openapi.yaml` and
 `ledger/openapi.yaml`. `docker compose up -d` serves both at http://localhost:8080 (Swagger UI).
 The specs are written by hand and are the source of truth; nothing generates them from code.
-Operations marked `x-planned: true` (the transfers, which wait for the `LedgerRouter` saga) are
-not built yet.
+An operation marked `x-planned: true` is not built yet.
 
 - **Contract tests.**
   - Every controller test calls `assert_response_schema(conn, status)`. The helper finds the
@@ -734,3 +738,39 @@ not built yet.
 - Errors extend Phoenix's shape: `{"errors": {"code": "invalid_transition", "detail": "…"}}`. An
   FSM refusal is `409`, and a rejected reservation or invalid body is `422`.
 - In dev, `accounts` listens on 4000 and `ledger` on 4001, so both can run side by side.
+
+### D13 · The saga is stateless: every event names the other account
+
+`BalanceReserved` carries the destination (`to_account_id`), and `CreditAuthorized` and
+`CreditRejected` carry the source (`from_account_id`). Each step of section 5 then follows from one
+event alone, so the `LedgerRouter` is a plain Commanded event handler rather than a process manager
+with state per `correlation_id`.
+
+- `BalanceReserved` → `AuthorizeCredit` on the destination. `CreditRejected` →
+  `ReleaseBalance` on the source.
+- The outbox books each `CreditAuthorized` as a `BookTransactionBatch` whose `batch_id` is the
+  `correlation_id` (D4).
+- **The Ledger's answer comes back through RabbitMQ.** `LedgerEventsPublisher` publishes
+  `LedgerBatchBooked` and `LedgerBatchRejected`, with their entries, on the `ledger.events` topic
+  exchange. Accounts binds its own queue, `accounts.ledger-events`, with a dead-letter queue
+  (D10). `LedgerEventsInbox` turns each entry of a customer account into the saga's last step.
+  A rejection carries its entries, so Accounts knows whom to compensate without keeping state.
+- **The D5 check** is the `OpenAccounts` dispatch middleware. It notes the accounts of a batch
+  that are missing from the open ledger accounts projection, and `TransactionBatch` rejects the
+  batch as `account_not_open`. The Ledger's inbox opens and closes accounts with strong
+  consistency, so the next batch on the queue sees them.
+- **Money comes in as an authorized credit from the bank's PIX settlement account.**
+  `POST /api/accounts/{id}/deposits` stands in for the payment scheme's anticorruption layer.
+  The deposit reuses `AuthorizeCredit`, so a frozen account refuses a PIX. The booked batch debits
+  `pix-settlement`, which the Ledger's seeds open (D5), and credits the customer.
+  `Accounts.BankAccounts` lists the bank's accounts, so no command is sent to a `CustomerAccount`
+  for them.
+- **Events recorded before a field existed are still handled.** The policies start from the
+  origin of the event store. A reservation that names no destination is released (D6), since no
+  saga can finish it. A rejected credit with no source has nothing to release. A `PostCredit`
+  for an account that was never opened fails, so its message is dead-lettered instead of
+  posting into nothing.
+
+Rejected: a process manager holding the transfer's accounts per `correlation_id`. It would keep
+state that the events can carry, and it would still need the Ledger's answer delivered to it
+through RabbitMQ.
