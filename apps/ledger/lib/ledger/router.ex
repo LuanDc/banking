@@ -6,9 +6,9 @@ defmodule Ledger.Router do
 
   use Commanded.Commands.Router
 
+  alias Ledger.Aggregates.LedgerAccount
+  alias Ledger.Aggregates.TransactionBatch
   alias Ledger.Commands
-  alias Ledger.LedgerAccount
-  alias Ledger.TransactionBatch
 
   # README, D5: a batch into an account that is not open is rejected.
   middleware(Ledger.Middleware.OpenAccounts)

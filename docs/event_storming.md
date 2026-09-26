@@ -475,10 +475,10 @@ specification: the two contexts share no code and no database, as the Context Ma
 above requires.
 
 ```
-accounts/                          # Account Management Context
+apps/accounts/                     # Account Management Context
 ├── priv/openapi.yaml              # the HTTP API (D12)
 └── lib/accounts/
-    ├── customer_account.ex        # 🟨 aggregate: FSM, transition matrix (section 3.1) and guards
+    ├── aggregates/customer_account.ex  # 🟨 FSM, transition matrix (section 3.1) and guards
     ├── commands/                  # 🟦 commands (section 7)
     ├── events/                    # 🟧 events (section 7)
     ├── customer_accounts.ex       # context entry point for the API (D12)
@@ -492,11 +492,11 @@ accounts/                          # Account Management Context
     │   └── ledger_commands_publisher.ex  # 🟪 outbox: Ledger commands to RabbitMQ (D3)
     └── messaging/                 # RabbitMQ transport: publisher, command contract, Ledger events consumer and inbox
 
-ledger/                            # Ledger Context
+apps/ledger/                       # Ledger Context
 ├── priv/openapi.yaml              # the HTTP API (D12)
 └── lib/ledger/
-    ├── transaction_batch.ex       # 🟨 aggregate: D = C invariant (section 4.1)
-    ├── ledger_account.ex          # 🟨 aggregate: OPEN · CLOSED (D5)
+    ├── aggregates/transaction_batch.ex  # 🟨 D = C invariant (section 4.1)
+    ├── aggregates/ledger_account.ex  # 🟨 OPEN · CLOSED (D5)
     ├── ledger_entry.ex            # DEBIT/CREDIT value object
     ├── commands/ · events/        # 🟦 🟧
     ├── projections/               # 🟩 read-model schemas: LedgerAccountsView, BalanceView, StatementView, TrialBalanceView
@@ -714,8 +714,8 @@ Accounts.EventStore ──┬─> LedgerCommandsPublisher ──> RabbitMQ   (ou
 
 ### D12 · The HTTP API: people send commands to Accounts, and the Ledger is read-only
 
-The API is described by OpenAPI 3.1 specs, one per service: `accounts/priv/openapi.yaml` and
-`ledger/priv/openapi.yaml`. `docker compose up -d` serves both at http://localhost:8080 (Swagger UI).
+The API is described by OpenAPI 3.1 specs, one per service: `apps/accounts/priv/openapi.yaml` and
+`apps/ledger/priv/openapi.yaml`. `docker compose up -d` serves both at http://localhost:8080 (Swagger UI).
 The specs are written by hand and are the source of truth; nothing generates them from code.
 An operation marked `x-planned: true` is not built yet.
 

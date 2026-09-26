@@ -1,4 +1,4 @@
-defmodule Ledger.TransactionBatch do
+defmodule Ledger.Aggregates.TransactionBatch do
   @moduledoc """
   Aggregate guarding the double-entry invariant: the debits of a batch equal its credits.
   """

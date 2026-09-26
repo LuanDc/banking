@@ -1,13 +1,13 @@
 defmodule Ledger.Messaging.InboxTest do
   use ExUnit.Case, async: true
 
+  alias Ledger.Aggregates.TransactionBatch
   alias Ledger.Commands.BookTransactionBatch
   alias Ledger.Commands.CloseLedgerAccount
   alias Ledger.Commands.OpenLedgerAccount
   alias Ledger.Events.LedgerBatchRejected
   alias Ledger.LedgerEntry
   alias Ledger.Messaging.Inbox
-  alias Ledger.TransactionBatch
 
   # Messages arrive as decoded JSON: string keys, string values.
 

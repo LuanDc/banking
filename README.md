@@ -67,28 +67,28 @@ Start here to understand *why* the code looks the way it does.
 
 Each service has its own README with how it works inside.
 
-| | [🏦 accounts](accounts/README.md) | [📒 ledger](ledger/README.md) |
+| | [🏦 accounts](apps/accounts/README.md) | [📒 ledger](apps/ledger/README.md) |
 | --- | --- | --- |
 | Role | Account lifecycle, available balance, transfer saga | Immutable double-entry book, source of truth for balances |
-| Tech stack | [Stack](accounts/README.md#tech-stack) | [Stack](ledger/README.md#tech-stack) |
-| Run in dev | [Guide](accounts/README.md#run-in-dev) | [Guide](ledger/README.md#run-in-dev) |
-| HTTP API + Swagger download | [API](accounts/README.md#http-api) | [API](ledger/README.md#http-api) |
-| Aggregates | [CustomerAccount](accounts/README.md#aggregate) | [TransactionBatch · LedgerAccount](ledger/README.md#aggregates) |
-| Commands | [13 commands](accounts/README.md#commands) | [3 commands](ledger/README.md#commands) |
-| Events | [15 events](accounts/README.md#events) | [4 events](ledger/README.md#events) |
-| Database tables | [Tables](accounts/README.md#database-tables) | [Tables](ledger/README.md#database-tables) |
-| Queues | [Queues](accounts/README.md#queues) | [Queues](ledger/README.md#queues) |
+| Tech stack | [Stack](apps/accounts/README.md#tech-stack) | [Stack](apps/ledger/README.md#tech-stack) |
+| Run in dev | [Guide](apps/accounts/README.md#run-in-dev) | [Guide](apps/ledger/README.md#run-in-dev) |
+| HTTP API + Swagger download | [API](apps/accounts/README.md#http-api) | [API](apps/ledger/README.md#http-api) |
+| Aggregates | [CustomerAccount](apps/accounts/README.md#aggregate) | [TransactionBatch · LedgerAccount](apps/ledger/README.md#aggregates) |
+| Commands | [13 commands](apps/accounts/README.md#commands) | [3 commands](apps/ledger/README.md#commands) |
+| Events | [15 events](apps/accounts/README.md#events) | [4 events](apps/ledger/README.md#events) |
+| Database tables | [Tables](apps/accounts/README.md#database-tables) | [Tables](apps/ledger/README.md#database-tables) |
+| Queues | [Queues](apps/accounts/README.md#queues) | [Queues](apps/ledger/README.md#queues) |
 
 ## Quick start
 
 ```bash
-docker compose up -d                 # Postgres, RabbitMQ and Swagger UI
-(cd ledger && mix setup)             # the ledger first: its seeds open the PIX settlement account
-(cd accounts && mix setup)
+docker compose up -d                # Postgres, RabbitMQ and Swagger UI
+(cd apps/ledger && mix setup)       # the ledger first: its seeds open the PIX settlement account
+(cd apps/accounts && mix setup)
 ```
 
 Then start each service with `iex -S mix phx.server` in its own terminal. Each service's
-[run in dev](accounts/README.md#run-in-dev) guide has the details.
+[run in dev](apps/accounts/README.md#run-in-dev) guide has the details.
 
 | Service | URL |
 | --- | --- |
@@ -102,8 +102,9 @@ Then start each service with `iex -S mix phx.server` in its own terminal. Each s
 ```
 .
 ├── docs/event_storming.md   # the design: event storming, context map, decisions D1…D14
-├── accounts/                # Account Management Context (Phoenix service)
-├── ledger/                  # Ledger Context (Phoenix service)
+├── apps/
+│   ├── accounts/            # Account Management Context (Phoenix service)
+│   └── ledger/              # Ledger Context (Phoenix service)
 ├── docker-compose.yml       # Postgres, RabbitMQ, Swagger UI
 └── CLAUDE.md                # conventions for AI-assisted work on the repo
 ```

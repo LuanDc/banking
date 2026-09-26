@@ -1,11 +1,11 @@
-defmodule Ledger.TransactionBatchTest do
+defmodule Ledger.Aggregates.TransactionBatchTest do
   use ExUnit.Case, async: true
 
+  alias Ledger.Aggregates.TransactionBatch
   alias Ledger.Commands.BookTransactionBatch
   alias Ledger.Events.LedgerBatchBooked
   alias Ledger.Events.LedgerBatchRejected
   alias Ledger.LedgerEntry
-  alias Ledger.TransactionBatch
 
   describe "BookTransactionBatch" do
     test "emits LedgerBatchBooked for a balanced batch" do

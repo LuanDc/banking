@@ -1,11 +1,11 @@
-defmodule Ledger.LedgerAccountTest do
+defmodule Ledger.Aggregates.LedgerAccountTest do
   use ExUnit.Case, async: true
 
+  alias Ledger.Aggregates.LedgerAccount
   alias Ledger.Commands.CloseLedgerAccount
   alias Ledger.Commands.OpenLedgerAccount
   alias Ledger.Events.LedgerAccountClosed
   alias Ledger.Events.LedgerAccountOpened
-  alias Ledger.LedgerAccount
 
   describe "OpenLedgerAccount" do
     test "emits LedgerAccountOpened for a new account" do

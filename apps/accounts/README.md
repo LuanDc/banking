@@ -3,7 +3,7 @@
 The service that knows **who may move money**. It owns each customer account's lifecycle,
 its available balance, and the transfer saga. The actual money book is the [📒 ledger](../ledger/README.md).
 
-[← Back to the project](../README.md) · [📐 Design doc](../docs/event_storming.md)
+[← Back to the project](../../README.md) · [📐 Design doc](../../docs/event_storming.md)
 
 | | |
 | --- | --- |
@@ -67,13 +67,13 @@ flowchart LR
 docker compose up -d
 
 # 2. The ledger first: its seeds open the bank's PIX settlement account, which deposits need
-(cd ledger && mix setup)
+(cd apps/ledger && mix setup)
 
 # 3. This service: deps, event store, read-model database
-cd accounts
+cd apps/accounts
 mix setup
 
-# 4. Run it (and `iex -S mix phx.server` in ledger/, in another terminal)
+# 4. Run it (and `iex -S mix phx.server` in apps/ledger/, in another terminal)
 iex -S mix phx.server
 ```
 
@@ -130,7 +130,7 @@ Errors look like `{"errors": {"code": "insufficient_balance", "detail": "…"}}`
 
 ### 🟨 `CustomerAccount`
 
-[`lib/accounts/customer_account.ex`](lib/accounts/customer_account.ex): one stream per
+[`lib/accounts/aggregates/customer_account.ex`](lib/accounts/aggregates/customer_account.ex): one stream per
 `account_id`. All of its rules live in this one file.
 
 ```mermaid

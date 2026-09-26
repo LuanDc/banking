@@ -1,6 +1,7 @@
-defmodule Accounts.CustomerAccountTest do
+defmodule Accounts.Aggregates.CustomerAccountTest do
   use ExUnit.Case, async: true
 
+  alias Accounts.Aggregates.CustomerAccount
   alias Accounts.Commands.ActivateCustomerAccount
   alias Accounts.Commands.AuthorizeCredit
   alias Accounts.Commands.BlockCustomerAccount
@@ -14,7 +15,6 @@ defmodule Accounts.CustomerAccountTest do
   alias Accounts.Commands.ReserveBalance
   alias Accounts.Commands.UnblockCustomerAccount
   alias Accounts.Commands.UnfreezeCustomerAccount
-  alias Accounts.CustomerAccount
   alias Accounts.Events.BalanceReleased
   alias Accounts.Events.BalanceReservationRejected
   alias Accounts.Events.BalanceReserved

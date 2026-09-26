@@ -1,10 +1,10 @@
 # Banking lab
 
-Two Phoenix services built on Commanded. `accounts/` is the Account Management Context and
-`ledger/` is the Ledger Context. They share no code and no database. `docs/event_storming.md` is
-the design document: sections 3–7 hold the model and section 10 the decisions (D1…D14). Read the
-relevant decision before changing its area. Code comments cite it as "README, Dn" from before it
-moved.
+Two Phoenix services built on Commanded, under `apps/`. `apps/accounts/` is the Account
+Management Context and `apps/ledger/` is the Ledger Context. They share no code and no database;
+run `mix` inside each one. `docs/event_storming.md` is the design document: sections 3–7 hold the
+model and section 10 the decisions (D1…D14). Read the relevant decision before changing its
+area. Code comments cite it as "README, Dn" from before it moved.
 
 ## Documentation
 
@@ -12,7 +12,7 @@ All docs are in English, written for developers who find the repo on GitHub.
 
 - `README.md` (root) is only a navigator. It links to `docs/event_storming.md` and to each
   service's README sections, and holds no service detail.
-- `<service>/README.md` describes how that service works: tech stack, run in dev, HTTP API
+- `apps/<service>/README.md` describes how that service works: tech stack, run in dev, HTTP API
   (Swagger download), aggregates, commands, events, database tables and queues. Update it in
   the same commit that changes any of those.
 - Keep the text light and visual: tables, Mermaid diagrams, emoji markers. Keep emojis out of
@@ -30,12 +30,13 @@ All docs are in English, written for developers who find the repo on GitHub.
 
 ## Code rules
 
+- **Aggregates live in `lib/<app>/aggregates/`**, named `<App>.Aggregates.<Name>`.
 - **An aggregate's rules live in the aggregate module.** Keep guards, the FSM transition table
   and invariants there, not in helper modules such as `StateMachine`. Confirm before splitting
   a rule out, e.g. for `TransactionBatch`.
 - **Each read-model table has a single owning projector** (D11). A projector reads only its own
   service's event store, never RabbitMQ.
-- **The HTTP API's source of truth is the hand-written `<service>/priv/openapi.yaml`** (D12).
+- **The HTTP API's source of truth is the hand-written `apps/<service>/priv/openapi.yaml`** (D12).
   - Never generate the spec from code: no open_api_spex `operation` macros and no spec module in
     Elixir.
   - When an endpoint changes, update the YAML first, then the controller test, then the
@@ -44,7 +45,7 @@ All docs are in English, written for developers who find the repo on GitHub.
     `assert_response_schema(conn, status)` (`test/support/api_spec.ex`, JSV). The
     `api_spec_test.exs` test requires the router to serve exactly the spec's operations; an
     operation not built yet is marked `x-planned: true`.
-  - Lint the spec with `npx @redocly/cli@1 lint <service>/priv/openapi.yaml`.
+  - Lint the spec with `npx @redocly/cli@1 lint apps/<service>/priv/openapi.yaml`.
   - Swagger UI: `docker compose up -d`, then http://localhost:8080.
 - **Commands declare their input rules** with `use Accounts.Command, fields: [...]` plus Vex
   `validates` (one `validates` per field). The `ValidateCommand` middleware checks them before

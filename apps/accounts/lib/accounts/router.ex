@@ -5,8 +5,8 @@ defmodule Accounts.Router do
 
   use Commanded.Commands.Router
 
+  alias Accounts.Aggregates.CustomerAccount
   alias Accounts.Commands
-  alias Accounts.CustomerAccount
 
   # README, D14: a command that breaks its input rules never reaches the aggregate.
   middleware(Accounts.Middleware.ValidateCommand)

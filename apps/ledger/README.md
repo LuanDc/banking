@@ -4,7 +4,7 @@ The bank's **immutable double-entry book**. Every movement is a batch of entries
 **debits = credits**. Nothing is ever edited. It is the source of truth for balances, and it knows
 no other context: it takes commands and publishes its own events.
 
-[← Back to the project](../README.md) · [📐 Design doc](../docs/event_storming.md)
+[← Back to the project](../../README.md) · [📐 Design doc](../../docs/event_storming.md)
 
 | | |
 | --- | --- |
@@ -65,7 +65,7 @@ flowchart LR
 docker compose up -d
 
 # 2. Deps, event store, read-model database and seeds
-cd ledger
+cd apps/ledger
 mix setup
 
 # 3. Run it on :4001
@@ -103,7 +103,7 @@ Errors: `404 not_found`, and `422 invalid_query` for a bad filter or cursor.
 
 ### 🟨 `TransactionBatch`
 
-[`lib/ledger/transaction_batch.ex`](lib/ledger/transaction_batch.ex): one stream per `batch_id`,
+[`lib/ledger/aggregates/transaction_batch.ex`](lib/ledger/aggregates/transaction_batch.ex): one stream per `batch_id`,
 which is the transfer's `correlation_id`. So a redelivered command finds the batch already
 decided and books nothing (D4).
 
@@ -128,7 +128,7 @@ it becomes a `LedgerBatchRejected` event, so the sender hears back and compensat
 
 ### 🟨 `LedgerAccount`
 
-[`lib/ledger/ledger_account.ex`](lib/ledger/ledger_account.ex): the chart of accounts, one
+[`lib/ledger/aggregates/ledger_account.ex`](lib/ledger/aggregates/ledger_account.ex): the chart of accounts, one
 stream per `account_id`. The lifecycle is deliberately minimal, because the business rules live in
 Accounts (D5).
 

@@ -60,8 +60,8 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./accounts/priv/openapi.yaml:/usr/share/nginx/html/specs/accounts.yaml:ro
-      - ./ledger/priv/openapi.yaml:/usr/share/nginx/html/specs/ledger.yaml:ro
+      - ./apps/accounts/priv/openapi.yaml:/usr/share/nginx/html/specs/accounts.yaml:ro
+      - ./apps/ledger/priv/openapi.yaml:/usr/share/nginx/html/specs/ledger.yaml:ro
 
 volumes:
   postgres-data:

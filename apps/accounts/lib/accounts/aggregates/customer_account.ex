@@ -1,4 +1,4 @@
-defmodule Accounts.CustomerAccount do
+defmodule Accounts.Aggregates.CustomerAccount do
   @moduledoc """
   Aggregate guarding a customer account's lifecycle, modeled as an FSM.
   """

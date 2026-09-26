@@ -5,10 +5,10 @@ defmodule Accounts.Handlers.LedgerRouterIntegrationTest do
 
   @moduletag :integration
 
+  alias Accounts.Aggregates.CustomerAccount
   alias Accounts.App
   alias Accounts.Commands.ActivateCustomerAccount
   alias Accounts.Commands.OpenCustomerAccount
-  alias Accounts.CustomerAccount
   alias Accounts.Events.BalanceReserved
   alias Accounts.Handlers.LedgerRouter
   alias Commanded.Aggregates.Aggregate

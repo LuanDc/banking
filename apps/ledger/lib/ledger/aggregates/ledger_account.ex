@@ -1,4 +1,4 @@
-defmodule Ledger.LedgerAccount do
+defmodule Ledger.Aggregates.LedgerAccount do
   @moduledoc """
   Aggregate for an account in the chart of accounts. Its lifecycle is minimal on purpose, OPEN
   and CLOSED: business rules about who may send or receive money live in Accounts (README, D5).
