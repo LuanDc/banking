@@ -1,18 +1,322 @@
-# Accounts
+# 🏦 accounts · Account Management Context
 
-To start your Phoenix server:
+The service that knows **who may move money**. It owns each customer account's lifecycle,
+its available balance, and the transfer saga. The actual money book is the [📒 ledger](../ledger/README.md).
 
-  * Run `mix setup` to install and setup dependencies
-  * Start Phoenix endpoint with `mix phx.server` or inside IEx with `iex -S mix phx.server`
+[← Back to the project](../README.md) · [📐 Design doc](../docs/event_storming.md)
 
-Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
+| | |
+| --- | --- |
+| 🌐 HTTP | http://localhost:4000/api |
+| 📖 Swagger | [⬇️ `priv/openapi.yaml`](priv/openapi.yaml?raw=true) · http://localhost:8080 |
+| 🗄️ Databases | `accounts_eventstore_dev` (events) · `accounts_dev` (read models) |
+| 🐇 Talks to | `ledger` through RabbitMQ only |
 
-Ready to run in production? Please [check our deployment guides](https://hexdocs.pm/phoenix/deployment.html).
+**Contents:** [How it works](#how-it-works) · [Tech stack](#tech-stack) · [Run in dev](#run-in-dev) ·
+[HTTP API](#http-api) · [Aggregate](#aggregate) · [Commands](#commands) · [Events](#events) ·
+[Database tables](#database-tables) · [Queues](#queues) · [Tests and quality](#tests-and-quality)
 
-## Learn more
+---
 
-  * Official website: https://www.phoenixframework.org/
-  * Guides: https://hexdocs.pm/phoenix/overview.html
-  * Docs: https://hexdocs.pm/phoenix
-  * Forum: https://elixirforum.com/c/phoenix-forum
-  * Source: https://github.com/phoenixframework/phoenix
+## How it works
+
+Every write is a **command**, and the `CustomerAccount` aggregate turns it into **events** in the
+event store. Everything else is a subscriber to those events.
+
+```mermaid
+flowchart LR
+    API["🌐 Controllers"] --> CTX["CustomerAccounts<br/>context"]
+    CTX -->|"Command.new(params)"| MW{{"ValidateCommand<br/>middleware"}}
+    MW -->|"valid"| AGG["🟨 CustomerAccount"]
+    MW -.->|"422 validation_failed"| API
+    AGG --> ES[("🟧 Event store")]
+
+    ES --> PRJ["🟩 Projectors"] --> RM[("accounts_dev")]
+    ES --> LR["🟪 LedgerRouter<br/>saga"] --> CTX
+    ES --> PUB["🟪 LedgerCommandsPublisher<br/>outbox"] --> MQ[["🐇 ledger.commands"]]
+    MQ2[["🐇 accounts.ledger-events"]] --> INBOX["LedgerEventsInbox"] --> AGG
+    CTX -->|"queries"| RM
+```
+
+- 🟨 **Aggregate:** holds the business rules (FSM, balance, credit matrix).
+- 🟩 **Projectors:** build the read models the API queries (D11).
+- 🟪 **Policies:** react to events. The saga authorizes and compensates, and the outbox sends
+  commands to the Ledger (D3, D13).
+- ✅ **Input rules** (a required field, a positive amount) live in each command and are checked
+  before dispatch (D14).
+
+## Tech stack
+
+| | Library | Used for |
+| --- | --- | --- |
+| 💧 | Elixir 1.18 · Phoenix 1.7 · Bandit | JSON API |
+| 🧠 | [Commanded](https://github.com/commanded/commanded) + [EventStore](https://github.com/commanded/eventstore) | CQRS/ES: aggregates, router, event handlers, Postgres event store |
+| 🟩 | [commanded_ecto_projections](https://github.com/commanded/commanded-ecto-projections) · Ecto | Read models in Postgres |
+| ✅ | [Vex](https://github.com/CargoSense/vex) · [ExConstructor](https://github.com/appcues/exconstructor) | Command input rules and building commands from params |
+| 🐇 | [AMQP](https://github.com/pma/amqp) · [Broadway RabbitMQ](https://github.com/dashbitco/broadway_rabbitmq) | Publishing commands, consuming the Ledger's events |
+| 📜 | OpenAPI 3.1 · [JSV](https://github.com/lud/jsv) | Hand-written spec and contract tests |
+| 🧪 | ExUnit · ExMachina · Mox · ExCoveralls | Tests |
+| 🔍 | Credo · Dialyxir · Sobelow · mix_audit | `mix quality` |
+
+## Run in dev
+
+> 🐳 Needs Docker and Elixir 1.18 / OTP 25+. A devcontainer is planned.
+
+```bash
+# 1. Infrastructure, from the repo root: Postgres, RabbitMQ, Swagger UI
+docker compose up -d
+
+# 2. The ledger first: its seeds open the bank's PIX settlement account, which deposits need
+(cd ledger && mix setup)
+
+# 3. This service: deps, event store, read-model database
+cd accounts
+mix setup
+
+# 4. Run it (and `iex -S mix phx.server` in ledger/, in another terminal)
+iex -S mix phx.server
+```
+
+### 🚀 Try a transfer
+
+```bash
+# Open two accounts and activate them (pending_kyc → active)
+A=$(curl -s localhost:4000/api/accounts -H 'content-type: application/json' \
+      -d '{"customer_id":"alice"}' | jq -r .account_id)
+B=$(curl -s localhost:4000/api/accounts -H 'content-type: application/json' \
+      -d '{"customer_id":"bob"}' | jq -r .account_id)
+curl -X POST localhost:4000/api/accounts/$A/activate
+curl -X POST localhost:4000/api/accounts/$B/activate
+
+# Money in: an inbound PIX of R$ 10.00 (amounts are cents, D1)
+curl localhost:4000/api/accounts/$A/deposits -H 'content-type: application/json' \
+  -H 'Idempotency-Key: dep-1' -d '{"amount":1000}'
+
+# Transfer R$ 4.00 from A to B, then check the outcome
+curl localhost:4000/api/transfers -H 'content-type: application/json' \
+  -H 'Idempotency-Key: tr-1' -d "{\"from_account_id\":\"$A\",\"to_account_id\":\"$B\",\"amount\":400}"
+curl localhost:4000/api/transfers/tr-1     # pending → completed
+```
+
+💡 Freeze B (`POST /api/accounts/$B/freeze` with `{"reason":"fraud"}`) and transfer again.
+The saga compensates and the transfer ends as `failed` with `credit_not_allowed`.
+
+## HTTP API
+
+The contract is [`priv/openapi.yaml`](priv/openapi.yaml), written by hand and the source of truth
+(D12). **[⬇️ Download it](priv/openapi.yaml?raw=true)** to import into Postman or Insomnia, or
+browse it in Swagger UI at http://localhost:8080 once `docker compose up -d` is running.
+
+| | Method · path | What it does |
+| --- | --- | --- |
+| 🆕 | `POST /api/accounts` | Open an account (starts `pending_kyc`) |
+| 🔎 | `GET /api/accounts?customer_id=` · `GET /api/accounts/{id}` | Status and available balance |
+| 📜 | `GET /api/accounts/{id}/status-history` | Every FSM transition |
+| 🔁 | `POST /api/accounts/{id}/activate · block · unblock · freeze · unfreeze · close` | Lifecycle, `204` |
+| 💸 | `POST /api/transfers` | Start a transfer (`202`, `Idempotency-Key` = `correlation_id`) |
+| 🔎 | `GET /api/transfers/{correlation_id}` | `pending` · `completed` · `failed` |
+| 📥 | `POST /api/accounts/{id}/deposits` | Receive an inbound PIX |
+| 📋 | `GET /api/accounts/{id}/reservations` · `/credits` | Paginated history of money out and in |
+
+Errors look like `{"errors": {"code": "insufficient_balance", "detail": "…"}}`.
+
+| Status | Codes |
+| --- | --- |
+| `404` | `not_found`, `account_not_found` |
+| `409` | `invalid_transition`, `balance_not_zero`, `open_reservations`, `pending_credits` |
+| `422` | `validation_failed` (with `fields`), `invalid_query`, `account_not_active`, `insufficient_balance`, `credit_not_allowed` |
+
+## Aggregate
+
+### 🟨 `CustomerAccount`
+
+[`lib/accounts/customer_account.ex`](lib/accounts/customer_account.ex): one stream per
+`account_id`. All of its rules live in this one file.
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending_kyc: Open
+    pending_kyc --> active: Activate
+    active --> blocked: Block
+    blocked --> active: Unblock
+    active --> frozen: Freeze
+    frozen --> active: Unfreeze
+    active --> closed: Close
+    blocked --> closed: Close
+    closed --> [*]
+```
+
+| Status | 💸 Send (debit) | 📥 Receive (credit) |
+| --- | :---: | :---: |
+| `pending_kyc` | ❌ | ❌ |
+| `active` | ✅ | ✅ |
+| `blocked` | ❌ | ✅ |
+| `frozen` | ❌ | ❌ |
+| `closed` | ❌ | ❌ |
+
+**State it keeps:** `status`, `available_balance`, open `reservations` and `pending_credits`,
+plus every `correlation_id` already decided or posted, so a redelivered message changes nothing
+(D4).
+
+**Its business rules:**
+
+- A transition not in the diagram → `invalid_transition`.
+- Closing needs an empty account → `balance_not_zero`, `open_reservations`, `pending_credits` (D8).
+- Reserving needs `active` and enough balance. Otherwise a `BalanceReservationRejected` event is
+  recorded.
+- Authorizing a credit needs `active` or `blocked`. Otherwise a `CreditRejected` event is
+  recorded.
+- Once a transfer is in flight, freezing doesn't stop it: confirm, release, post and cancel
+  ignore the status (D7).
+
+## Commands
+
+Each one is declared with `use Accounts.Command, fields: [...]` plus Vex `validates`
+([`lib/accounts/commands/`](lib/accounts/commands/)). ✅ marks the input rules checked before
+dispatch.
+
+| Command | Fields | ✅ Input rules | Sent by |
+| --- | --- | --- | --- |
+| `OpenCustomerAccount` | `account_id`, `customer_id` | both present | 🌐 API |
+| `ActivateCustomerAccount` | `account_id` | present | 🌐 API (KYC back office) |
+| `BlockCustomerAccount` | `account_id`, `reason` | both present | 🌐 API |
+| `UnblockCustomerAccount` | `account_id` | present | 🌐 API |
+| `FreezeCustomerAccount` | `account_id`, `reason` | both present | 🌐 API |
+| `UnfreezeCustomerAccount` | `account_id` | present | 🌐 API |
+| `CloseCustomerAccount` | `account_id` | present | 🌐 API |
+| `ReserveBalance` | `account_id`, `amount`, `correlation_id`, `to_account_id` | positive cents, destination ≠ source | 🌐 API (transfer) |
+| `AuthorizeCredit` | `account_id`, `amount`, `correlation_id`, `from_account_id` | positive cents | 🟪 saga · 🌐 API (deposit) |
+| `ConfirmReservation` | `account_id`, `correlation_id` | present | 🐇 Ledger booked |
+| `ReleaseBalance` | `account_id`, `correlation_id` | present | 🟪 saga · 🐇 Ledger rejected |
+| `PostCredit` | `account_id`, `amount`, `correlation_id` | positive cents | 🐇 Ledger booked |
+| `CancelCredit` | `account_id`, `correlation_id` | present | 🐇 Ledger rejected |
+
+## Events
+
+[`lib/accounts/events/`](lib/accounts/events/). Timestamps come from the event store's metadata,
+not from the payload.
+
+| | Event | Payload | Emitted when |
+| --- | --- | --- | --- |
+| 🔁 | `CustomerAccountOpened` | `account_id`, `customer_id` | an account is opened |
+| 🔁 | `CustomerAccountActivated` | `account_id` | KYC approved |
+| 🔁 | `CustomerAccountBlocked` | `account_id`, `reason` | blocked by the back office |
+| 🔁 | `CustomerAccountUnblocked` | `account_id` | unblocked |
+| 🔁 | `CustomerAccountFrozen` | `account_id`, `reason` | frozen |
+| 🔁 | `CustomerAccountUnfrozen` | `account_id` | unfrozen |
+| 🔁 | `CustomerAccountClosed` | `account_id` | closed, empty |
+| 💸 | `BalanceReserved` | `account_id`, `amount`, `correlation_id`, `to_account_id` | a transfer holds the money |
+| ❌ | `BalanceReservationRejected` | … + `reason` | not active or not enough balance |
+| ✅ | `ReservationConfirmed` | `account_id`, `correlation_id`, `amount` | the Ledger booked the batch |
+| ↩️ | `BalanceReleased` | `account_id`, `correlation_id`, `amount` | compensation: the money is back |
+| 📥 | `CreditAuthorized` | `account_id`, `amount`, `correlation_id`, `from_account_id` | the destination accepts the credit |
+| ❌ | `CreditRejected` | … + `reason` | the destination can't receive |
+| ✅ | `CreditPosted` | `account_id`, `amount`, `correlation_id` | the Ledger booked it, balance goes up |
+| ↩️ | `CreditCancelled` | `account_id`, `correlation_id`, `amount` | the Ledger rejected the batch |
+
+### 🟪 Who reacts to them
+
+| Handler | On | Does |
+| --- | --- | --- |
+| `LedgerRouter` (saga, D13) | `BalanceReserved` | `AuthorizeCredit` on the destination |
+| | `CreditRejected` | `ReleaseBalance` on the source |
+| `LedgerCommandsPublisher` (outbox, D3) | `CustomerAccountOpened` / `Closed` | sends `OpenLedgerAccount` / `CloseLedgerAccount` |
+| | `CreditAuthorized` | sends `BookTransactionBatch` (debit source, credit destination) |
+| `LedgerEventsInbox` (RabbitMQ) | `LedgerBatchBooked` | `ConfirmReservation` + `PostCredit` |
+| | `LedgerBatchRejected` | `ReleaseBalance` + `CancelCredit` |
+
+## Database tables
+
+**Event store** (`accounts_eventstore_dev`) is managed by EventStore: one stream per account.
+**Read models** (`accounts_dev`) have one owning projector per table, and can be rebuilt with
+`mix commanded.reset` (D11).
+
+```mermaid
+erDiagram
+    customer_accounts ||--o{ customer_account_status_changes : "history"
+    customer_accounts ||..o{ reservations : "account_id, no FK"
+    customer_accounts ||..o{ credits : "account_id, no FK"
+
+    customer_accounts {
+        text account_id PK
+        text customer_id
+        text status "pending_kyc, active, blocked, frozen, closed"
+        text status_reason
+        bigint available_balance "cents"
+        timestamp opened_at
+        timestamp closed_at
+        timestamp updated_at
+    }
+    customer_account_status_changes {
+        bigserial id PK
+        text account_id FK
+        text event
+        text status
+        text reason
+        timestamp occurred_at
+    }
+    reservations {
+        bigserial id PK
+        text account_id
+        text correlation_id "unique per account"
+        text to_account_id
+        bigint amount
+        text status "open, confirmed, released, rejected"
+        text reason
+        timestamp reserved_at
+        timestamp settled_at
+    }
+    credits {
+        bigserial id PK
+        text account_id
+        text correlation_id "unique per account"
+        bigint amount
+        text status "authorized, posted, cancelled, rejected"
+        text reason
+        timestamp authorized_at
+        timestamp settled_at
+    }
+```
+
+| Table | 🟩 Projector | Serves |
+| --- | --- | --- |
+| `customer_accounts` + `customer_account_status_changes` | `CustomerAccountsProjector` | account status, balance, history |
+| `reservations` | `ReservationsProjector` | money out, transfer outcome |
+| `credits` | `CreditsProjector` | money in, pending credits (D8) |
+| `projection_versions` | (the library) | last event each projector has applied |
+
+## Queues
+
+```mermaid
+flowchart LR
+    PUB["LedgerCommandsPublisher"] -->|"default exchange"| Q1[["ledger.commands"]]
+    Q1 --> LEDGER["📒 ledger"]
+    LEDGER --> X{{"ledger.events<br/>topic"}}
+    X -->|"ledger.batch.*"| Q2[["accounts.ledger-events"]]
+    Q2 --> C["LedgerEventsConsumer<br/>Broadway"]
+    Q2 -.->|"rejected"| DLQ[["accounts.ledger-events.dead"]]
+```
+
+| Queue / exchange | Owner | Direction | Carries |
+| --- | --- | --- | --- |
+| `ledger.commands` | 📒 ledger | ➡️ out | `OpenLedgerAccount`, `CloseLedgerAccount`, `BookTransactionBatch` |
+| `ledger.events` (topic) | 📒 ledger | ⬅️ in | `ledger.batch.booked`, `ledger.batch.rejected` |
+| `accounts.ledger-events` | 🏦 accounts | ⬅️ in | this service's subscription to `ledger.batch.*` |
+| `accounts.ledger-events.dead` | 🏦 accounts | 💀 | messages that failed, to inspect and replay |
+
+Delivery is at least once, so every consumer deduplicates by `correlation_id` (D4). Publishing
+uses publisher confirms plus `mandatory`, so a message is never lost silently (D10).
+
+## Tests and quality
+
+```bash
+mix test        # creates and migrates the test databases on its own
+mix quality     # format, warnings as errors, credo --strict, sobelow, deps.audit, dialyzer
+```
+
+| Layer | Tests |
+| --- | --- |
+| Aggregate | pure `execute/2` and `apply/2`, no database |
+| Projectors | called directly, against the database (`DataCase`) |
+| Controllers | each response validated against `priv/openapi.yaml` (`assert_response_schema`) |
+| API contract | the router serves exactly the spec's operations |

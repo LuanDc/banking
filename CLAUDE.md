@@ -1,9 +1,22 @@
 # Banking lab
 
 Two Phoenix services built on Commanded. `accounts/` is the Account Management Context and
-`ledger/` is the Ledger Context. They share no code and no database. README.md is the design
-document: sections 3–7 hold the model and section 10 the decisions (D1…D12). Read the relevant
-decision before changing its area.
+`ledger/` is the Ledger Context. They share no code and no database. `docs/event_storming.md` is
+the design document: sections 3–7 hold the model and section 10 the decisions (D1…D14). Read the
+relevant decision before changing its area. Code comments cite it as "README, Dn" from before it
+moved.
+
+## Documentation
+
+All docs are in English, written for developers who find the repo on GitHub.
+
+- `README.md` (root) is only a navigator. It links to `docs/event_storming.md` and to each
+  service's README sections, and holds no service detail.
+- `<service>/README.md` describes how that service works: tech stack, run in dev, HTTP API
+  (Swagger download), aggregates, commands, events, database tables and queues. Update it in
+  the same commit that changes any of those.
+- Keep the text light and visual: tables, Mermaid diagrams, emoji markers. Keep emojis out of
+  headings, so the anchors the root README links to stay stable.
 
 ## Workflow
 
