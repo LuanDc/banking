@@ -9,7 +9,7 @@ defmodule LedgerWeb.ApiSpec do
 
   import ExUnit.Assertions
 
-  @spec_path Path.expand("../../openapi.yaml", __DIR__)
+  @spec_path Path.expand("../../priv/openapi.yaml", __DIR__)
   @external_resource @spec_path
 
   @methods ~w(get post put patch delete)

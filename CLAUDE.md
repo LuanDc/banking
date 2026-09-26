@@ -22,7 +22,7 @@ decision before changing its area.
   a rule out, e.g. for `TransactionBatch`.
 - **Each read-model table has a single owning projector** (D11). A projector reads only its own
   service's event store, never RabbitMQ.
-- **The HTTP API's source of truth is the hand-written `<service>/openapi.yaml`** (D12).
+- **The HTTP API's source of truth is the hand-written `<service>/priv/openapi.yaml`** (D12).
   - Never generate the spec from code: no open_api_spex `operation` macros and no spec module in
     Elixir.
   - When an endpoint changes, update the YAML first, then the controller test, then the
@@ -31,7 +31,7 @@ decision before changing its area.
     `assert_response_schema(conn, status)` (`test/support/api_spec.ex`, JSV). The
     `api_spec_test.exs` test requires the router to serve exactly the spec's operations; an
     operation not built yet is marked `x-planned: true`.
-  - Lint the spec with `npx @redocly/cli@1 lint <service>/openapi.yaml`.
+  - Lint the spec with `npx @redocly/cli@1 lint <service>/priv/openapi.yaml`.
   - Swagger UI: `docker compose up -d`, then http://localhost:8080.
 - **Commands declare their input rules** with `use Accounts.Command, fields: [...]` plus Vex
   `validates` (one `validates` per field). The `ValidateCommand` middleware checks them before
