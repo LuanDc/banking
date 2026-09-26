@@ -3,7 +3,8 @@ defmodule Accounts.Commands.FreezeCustomerAccount do
   Intent to freeze a customer account, stopping both inbound and outbound money.
   """
 
-  defstruct [:account_id, :reason]
+  use Accounts.Command, fields: [:account_id, :reason]
 
-  use ExConstructor
+  validates :account_id, presence: true
+  validates :reason, presence: true
 end

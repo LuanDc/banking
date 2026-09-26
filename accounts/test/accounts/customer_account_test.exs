@@ -199,29 +199,6 @@ defmodule Accounts.CustomerAccountTest do
     end
   end
 
-  describe "required fields" do
-    test "an account opens only for a customer" do
-      for customer_id <- [nil, ""] do
-        command = %OpenCustomerAccount{account_id: "acc-1", customer_id: customer_id}
-
-        assert {:error, :customer_id_required} =
-                 CustomerAccount.execute(%CustomerAccount{}, command)
-      end
-    end
-
-    test "blocking and freezing need a reason, since they take money away from the customer" do
-      account = %CustomerAccount{account_id: "acc-1", status: :active}
-
-      for reason <- [nil, ""],
-          command <- [
-            %BlockCustomerAccount{account_id: "acc-1", reason: reason},
-            %FreezeCustomerAccount{account_id: "acc-1", reason: reason}
-          ] do
-        assert {:error, :reason_required} = CustomerAccount.execute(account, command)
-      end
-    end
-  end
-
   describe "an account that was never opened" do
     test "rejects every lifecycle command as not found, rather than as an invalid transition" do
       for command <- [
@@ -269,32 +246,6 @@ defmodule Accounts.CustomerAccountTest do
                reserve(active_account(100), 400)
     end
 
-    test "rejects a transfer to the account itself" do
-      command = %ReserveBalance{
-        account_id: "acc-1",
-        amount: 400,
-        correlation_id: "corr-1",
-        to_account_id: "acc-1"
-      }
-
-      assert %BalanceReservationRejected{reason: :same_account} =
-               CustomerAccount.execute(active_account(1_000), command)
-    end
-
-    test "rejects a transfer with no destination" do
-      for to_account_id <- [nil, ""] do
-        command = %ReserveBalance{
-          account_id: "acc-1",
-          amount: 400,
-          correlation_id: "corr-1",
-          to_account_id: to_account_id
-        }
-
-        assert %BalanceReservationRejected{reason: :invalid_destination} =
-                 CustomerAccount.execute(active_account(1_000), command)
-      end
-    end
-
     test "rejects an account that was never opened as not found" do
       assert %BalanceReservationRejected{reason: :account_not_found} =
                reserve(%CustomerAccount{}, 400)
@@ -308,21 +259,6 @@ defmodule Accounts.CustomerAccountTest do
       blocked = %CustomerAccount{active_account(1_000) | status: :blocked}
 
       assert %BalanceReservationRejected{reason: :account_not_active} = reserve(blocked, 400)
-    end
-
-    test "rejects a negative amount, which would raise the available balance" do
-      assert %BalanceReservationRejected{reason: :invalid_amount} =
-               reserve(active_account(1_000), -500)
-    end
-
-    test "rejects a zero amount, which holds no money" do
-      assert %BalanceReservationRejected{reason: :invalid_amount} =
-               reserve(active_account(1_000), 0)
-    end
-
-    test "rejects an amount that is not an integer number of cents" do
-      assert %BalanceReservationRejected{reason: :invalid_amount} =
-               reserve(active_account(1_000), 10.5)
     end
 
     test "ignores a repeated command for a reservation that is already open" do
@@ -445,13 +381,6 @@ defmodule Accounts.CustomerAccountTest do
         account = %CustomerAccount{active_account(0) | status: status}
 
         assert %CreditRejected{reason: :credit_not_allowed} = authorize_credit(account, 400)
-      end
-    end
-
-    test "emits CreditRejected for a zero, negative or fractional amount" do
-      for amount <- [0, -100, 10.5] do
-        assert %CreditRejected{reason: :invalid_amount} =
-                 authorize_credit(active_account(0), amount)
       end
     end
 

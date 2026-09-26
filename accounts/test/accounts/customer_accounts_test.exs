@@ -17,7 +17,7 @@ defmodule Accounts.CustomerAccountsTest do
     end
 
     test "needs a customer_id" do
-      assert {:error, :customer_id_required} = CustomerAccounts.list_customer_accounts(%{})
+      assert {:error, :invalid_query} = CustomerAccounts.list_customer_accounts(%{})
     end
   end
 

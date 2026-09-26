@@ -389,11 +389,11 @@ that contract. The dependency runs one way only (D3, D5).
 
 | Command | Aggregate | Success event | Rejection event/error | Guard |
 | --- | --- | --- | --- | --- |
-| `OpenCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountOpened` | account already exists, no `customer_id` | — |
+| `OpenCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountOpened` | account already exists | — |
 | `ActivateCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountActivated` | rejected | state = `PENDING_KYC` |
-| `BlockCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountBlocked` | rejected | state = `ACTIVE`, a reason |
+| `BlockCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountBlocked` | rejected | state = `ACTIVE` |
 | `UnblockCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountUnblocked` | rejected | state = `BLOCKED` |
-| `FreezeCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountFrozen` ⊕ | rejected | state = `ACTIVE`, a reason |
+| `FreezeCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountFrozen` ⊕ | rejected | state = `ACTIVE` |
 | `UnfreezeCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountUnfrozen` ⊕ | rejected | state = `FROZEN` |
 | `CloseCustomerAccount` ⊕ | `CustomerAccount` | `CustomerAccountClosed` ⊕ | rejected | state ∈ {`ACTIVE`, `BLOCKED`}, zero available balance, no open reservation, no pending credit (D8) |
 | `ReserveBalance` ⊕ | `CustomerAccount` | `BalanceReserved` | `BalanceReservationRejected` ⊕ | `ACTIVE` + available balance |
@@ -402,6 +402,10 @@ that contract. The dependency runs one way only (D3, D5).
 | `AuthorizeCredit` ⊕ | `CustomerAccount` | `CreditAuthorized` ⊕ | `CreditRejected` ⊕ | matrix allows credit: `ACTIVE`, `BLOCKED` (D5) |
 | `PostCredit` ⊕ | `CustomerAccount` | `CreditPosted` ⊕ | — (a posted `correlation_id` is ignored, D4) | none: mirrors a credit the Ledger booked (D2) |
 | `CancelCredit` ⊕ | `CustomerAccount` | `CreditCancelled` ⊕ | — (an unknown `correlation_id` is ignored, D4) | pending credit exists |
+
+The guards above are business rules, checked by the aggregate. What a command must carry (a
+`customer_id`, a reason to block or freeze, a positive amount, a destination other than the
+source) is checked before dispatch (D14).
 
 A lifecycle command other than `OpenCustomerAccount` on an account that was never opened is
 rejected as `account_not_found` rather than `invalid_transition`, which the API returns as 404
@@ -478,6 +482,8 @@ accounts/                          # Account Management Context
     ├── commands/                  # 🟦 commands (section 7)
     ├── events/                    # 🟧 events (section 7)
     ├── customer_accounts.ex       # context entry point for the API (D12)
+    ├── command.ex                 # the macro every command uses: fields, constructor, input rules (D14)
+    ├── middleware/validate_command.ex  # checks each command's input rules before dispatch (D14)
     ├── bank_accounts.ex           # the bank's own ledger accounts, e.g. PIX settlement (D5)
     ├── projections/               # 🟩 read-model schemas: AccountStatusView, ReservationsView, CreditsView
     ├── handlers/                  # subscribers of the event store
@@ -736,7 +742,9 @@ An operation marked `x-planned: true` is not built yet.
 - **Queries read the read models (D11)**, so they are eventually consistent. A lifecycle command
   returns `204` rather than the new state, which the read model may not show yet.
 - Errors extend Phoenix's shape: `{"errors": {"code": "invalid_transition", "detail": "…"}}`. An
-  FSM refusal is `409`, and a rejected reservation or invalid body is `422`.
+  FSM refusal is `409`. A rejected reservation or credit is `422` with its reason, and a command
+  that breaks its input rules is `422 validation_failed`, with `fields` listing the messages for
+  each field (D14).
 - In dev, `accounts` listens on 4000 and `ledger` on 4001, so both can run side by side.
 
 ### D13 · The saga is stateless: every event names the other account
@@ -774,3 +782,33 @@ with state per `correlation_id`.
 Rejected: a process manager holding the transfer's accounts per `correlation_id`. It would keep
 state that the events can carry, and it would still need the Ledger's answer delivered to it
 through RabbitMQ.
+
+### D14 · Input rules live in the command, business rules in the aggregate
+
+Every command in Accounts is declared with `use Accounts.Command, fields: [...]`. The macro
+defines the struct, adds a constructor from request params (ExConstructor), and makes Vex's
+`validates` available, so each command states what it must carry:
+
+```elixir
+use Accounts.Command, fields: [:account_id, :amount, :correlation_id, :to_account_id]
+
+validates :account_id, presence: true
+validates :amount, by: [function: &Accounts.Command.positive_cents?/1, message: "…"]
+validates :correlation_id, presence: true
+validates :to_account_id, presence: true, by: [function: &Accounts.Command.other_account?/2, …]
+```
+
+- **Input rules** can be checked from the command alone: a required field, an amount that is a
+  positive integer number of cents (D1), a destination other than the source, a
+  `correlation_id` (D4). **Business rules** need the aggregate's state and stay in
+  `CustomerAccount`: the FSM, the available balance, the credit matrix, and whether the
+  account exists.
+- `Accounts.Middleware.ValidateCommand`, in the Commanded router, checks every command before
+  dispatch, whoever sends it: the API, the saga or the Ledger's events. An invalid command
+  answers `{:error, {:validation_failed, fields}}` and never reaches the aggregate, so it records
+  nothing. A rejection event (`BalanceReservationRejected`, `CreditRejected`) is only for a
+  business decision.
+- Vex keeps one entry per field, so all of a field's rules go in a single `validates`.
+- **The Ledger keeps its checks in `TransactionBatch`.** An empty batch or an invalid amount
+  has to become `LedgerBatchRejected`, so the sender hears back and compensates. A dispatch
+  error would dead-letter the message and leave the reservation open (D6).

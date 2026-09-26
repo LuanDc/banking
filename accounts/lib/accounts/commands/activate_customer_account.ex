@@ -3,7 +3,7 @@ defmodule Accounts.Commands.ActivateCustomerAccount do
   Intent to activate a customer account once KYC is approved.
   """
 
-  defstruct [:account_id]
+  use Accounts.Command, fields: [:account_id]
 
-  use ExConstructor
+  validates :account_id, presence: true
 end

@@ -63,10 +63,6 @@ defmodule Accounts.CustomerAccount do
 
   @lifecycle_events @transitions |> Map.keys() |> Enum.map(&elem(&1, 1)) |> Enum.uniq()
 
-  def execute(%__MODULE__{status: nil}, %OpenCustomerAccount{customer_id: customer_id})
-      when customer_id in [nil, ""],
-      do: {:error, :customer_id_required}
-
   def execute(%__MODULE__{status: nil}, %OpenCustomerAccount{} = command) do
     %CustomerAccountOpened{account_id: command.account_id, customer_id: command.customer_id}
   end
@@ -78,12 +74,10 @@ defmodule Accounts.CustomerAccount do
   end
 
   def execute(%__MODULE__{} = account, %BlockCustomerAccount{} = command) do
-    event = %CustomerAccountBlocked{account_id: command.account_id, reason: command.reason}
-
-    with :ok <- check_transition(account, event),
-         :ok <- check_reason(command.reason) do
-      event
-    end
+    transition(account, %CustomerAccountBlocked{
+      account_id: command.account_id,
+      reason: command.reason
+    })
   end
 
   def execute(%__MODULE__{} = account, %UnblockCustomerAccount{} = command) do
@@ -91,12 +85,10 @@ defmodule Accounts.CustomerAccount do
   end
 
   def execute(%__MODULE__{} = account, %FreezeCustomerAccount{} = command) do
-    event = %CustomerAccountFrozen{account_id: command.account_id, reason: command.reason}
-
-    with :ok <- check_transition(account, event),
-         :ok <- check_reason(command.reason) do
-      event
-    end
+    transition(account, %CustomerAccountFrozen{
+      account_id: command.account_id,
+      reason: command.reason
+    })
   end
 
   def execute(%__MODULE__{} = account, %UnfreezeCustomerAccount{} = command) do
@@ -280,9 +272,6 @@ defmodule Accounts.CustomerAccount do
 
   defp check_reservation(account, command) do
     cond do
-      not valid_amount?(command.amount) -> {:error, :invalid_amount}
-      command.to_account_id in [nil, ""] -> {:error, :invalid_destination}
-      command.to_account_id == command.account_id -> {:error, :same_account}
       account.status == nil -> {:error, :account_not_found}
       account.status not in @can_send -> {:error, :account_not_active}
       command.amount > account.available_balance -> {:error, :insufficient_balance}
@@ -301,7 +290,7 @@ defmodule Accounts.CustomerAccount do
   end
 
   defp decide_credit(account, command) do
-    case check_credit(account, command.amount) do
+    case check_credit(account) do
       :ok ->
         %CreditAuthorized{
           account_id: command.account_id,
@@ -321,21 +310,13 @@ defmodule Accounts.CustomerAccount do
     end
   end
 
-  defp check_credit(account, amount) do
+  defp check_credit(account) do
     cond do
-      not valid_amount?(amount) -> {:error, :invalid_amount}
       account.status == nil -> {:error, :account_not_found}
       account.status not in @can_receive -> {:error, :credit_not_allowed}
       true -> :ok
     end
   end
-
-  # Blocking and freezing take money away from the customer, so they are explained.
-  defp check_reason(reason) when reason in [nil, ""], do: {:error, :reason_required}
-  defp check_reason(_reason), do: :ok
-
-  # README, D1: money is an integer number of cents.
-  defp valid_amount?(amount), do: is_integer(amount) and amount > 0
 
   defp transition(account, event) do
     with :ok <- check_transition(account, event), do: event

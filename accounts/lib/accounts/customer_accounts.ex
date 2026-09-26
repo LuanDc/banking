@@ -92,8 +92,6 @@ defmodule Accounts.CustomerAccounts do
   for `params[\"to_account_id\"]` (README, section 5). The idempotency key is the saga's
   `correlation_id` (D4): a repeated key starts nothing new and returns the transfer as it stands.
   """
-  def transfer_money(_params, nil), do: {:error, :idempotency_key_required}
-
   def transfer_money(params, idempotency_key) do
     command =
       params
@@ -114,8 +112,6 @@ defmodule Accounts.CustomerAccounts do
   from the bank's PIX settlement account (README, D2), authorized like any other. The idempotency
   key is its `correlation_id` (D4): a repeated key credits nothing twice.
   """
-  def deposit(_params, nil), do: {:error, :idempotency_key_required}
-
   def deposit(params, idempotency_key) do
     command =
       params
@@ -153,7 +149,7 @@ defmodule Accounts.CustomerAccounts do
     {:ok, accounts}
   end
 
-  def list_customer_accounts(_params), do: {:error, :customer_id_required}
+  def list_customer_accounts(_params), do: {:error, :invalid_query}
 
   @doc "The account's FSM history, oldest first."
   def list_status_changes(account_id) do

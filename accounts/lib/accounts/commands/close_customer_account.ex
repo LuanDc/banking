@@ -3,7 +3,7 @@ defmodule Accounts.Commands.CloseCustomerAccount do
   Intent to close a customer account for good.
   """
 
-  defstruct [:account_id]
+  use Accounts.Command, fields: [:account_id]
 
-  use ExConstructor
+  validates :account_id, presence: true
 end

@@ -36,7 +36,7 @@ defmodule AccountsWeb.AccountControllerTest do
     test "returns 422 without a customer_id", %{conn: conn} do
       conn = post(conn, ~p"/api/accounts", %{})
 
-      assert %{"errors" => %{"code" => "customer_id_required"}} =
+      assert %{"errors" => %{"code" => "validation_failed", "fields" => %{"customer_id" => _}}} =
                assert_response_schema(conn, 422)
     end
   end
@@ -54,7 +54,7 @@ defmodule AccountsWeb.AccountControllerTest do
     test "returns 422 without a customer_id", %{conn: conn} do
       conn = get(conn, ~p"/api/accounts")
 
-      assert %{"errors" => %{"code" => "customer_id_required"}} =
+      assert %{"errors" => %{"code" => "invalid_query"}} =
                assert_response_schema(conn, 422)
     end
   end

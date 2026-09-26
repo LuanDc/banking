@@ -3,7 +3,7 @@ defmodule Accounts.Commands.UnfreezeCustomerAccount do
   Intent to lift a freeze, allowing the account to send and receive money again.
   """
 
-  defstruct [:account_id]
+  use Accounts.Command, fields: [:account_id]
 
-  use ExConstructor
+  validates :account_id, presence: true
 end

@@ -4,5 +4,15 @@ defmodule Accounts.Commands.PostCredit do
   available (README, D2).
   """
 
-  defstruct [:account_id, :amount, :correlation_id]
+  use Accounts.Command, fields: [:account_id, :amount, :correlation_id]
+
+  validates :account_id, presence: true
+
+  validates :amount,
+    by: [
+      function: &Accounts.Command.positive_cents?/1,
+      message: "must be a positive integer number of cents"
+    ]
+
+  validates :correlation_id, presence: true
 end

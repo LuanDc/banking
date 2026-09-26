@@ -74,7 +74,8 @@ defmodule AccountsWeb.LifecycleControllerTest do
 
       conn = post(conn, ~p"/api/accounts/#{id}/block")
 
-      assert %{"errors" => %{"code" => "reason_required"}} = assert_response_schema(conn, 422)
+      assert %{"errors" => %{"code" => "validation_failed", "fields" => %{"reason" => _}}} =
+               assert_response_schema(conn, 422)
     end
   end
 

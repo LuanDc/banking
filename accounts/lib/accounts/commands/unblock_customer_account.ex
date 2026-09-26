@@ -3,7 +3,7 @@ defmodule Accounts.Commands.UnblockCustomerAccount do
   Intent to lift a block, allowing the account to send money again.
   """
 
-  defstruct [:account_id]
+  use Accounts.Command, fields: [:account_id]
 
-  use ExConstructor
+  validates :account_id, presence: true
 end

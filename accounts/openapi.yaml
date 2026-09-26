@@ -255,9 +255,9 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422":
           description: |
-            Invalid request, or the reservation was rejected (`BalanceReservationRejected`).
-            `code` is one of `idempotency_key_required`, `invalid_destination`, `same_account`,
-            `invalid_amount`, `account_not_active` or `insufficient_balance`.
+            The command is invalid, or the reservation was rejected (`BalanceReservationRejected`).
+            `code` is `validation_failed`, with the offending `fields` (the Idempotency-Key is
+            the `correlation_id`), or one of `account_not_active` or `insufficient_balance`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -309,8 +309,9 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "422":
           description: |
-            The credit was rejected (`CreditRejected`). `code` is one of
-            `idempotency_key_required`, `invalid_amount` or `credit_not_allowed`.
+            The command is invalid, or the credit was rejected (`CreditRejected`). `code` is
+            `validation_failed`, with the offending `fields` (the Idempotency-Key is the
+            `correlation_id`), or `credit_not_allowed`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -443,13 +444,17 @@ components:
             errors: { code: invalid_transition, detail: The account cannot make this transition from its current status. }
     ValidationFailed:
       description: |
-        A required field is missing or blank, or a query parameter is invalid. `code` is
-        `customer_id_required`, `reason_required` or `invalid_query`.
+        The command failed its input rules (README, D14): `code` is `validation_failed`, and
+        `fields` lists the messages per field. On a query, an invalid parameter is
+        `invalid_query`.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
           example:
-            errors: { code: reason_required, detail: A reason is required. }
+            errors:
+              code: validation_failed
+              detail: The command is invalid.
+              fields: { reason: [must be present] }
 
   schemas:
     Id:
@@ -579,3 +584,9 @@ components:
           properties:
             code: { type: string, description: "Machine-readable reason, e.g. `invalid_transition`." }
             detail: { type: string }
+            fields:
+              type: object
+              description: With `validation_failed`, the messages for each invalid field.
+              additionalProperties:
+                type: array
+                items: { type: string }

@@ -59,7 +59,7 @@ defmodule AccountsWeb.TransferControllerTest do
       conn =
         post(conn, ~p"/api/transfers", %{from_account_id: "a", to_account_id: "b", amount: 1})
 
-      assert %{"errors" => %{"code" => "idempotency_key_required"}} =
+      assert %{"errors" => %{"code" => "validation_failed", "fields" => %{"correlation_id" => _}}} =
                assert_response_schema(conn, 422)
     end
   end

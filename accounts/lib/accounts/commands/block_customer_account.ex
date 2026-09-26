@@ -3,7 +3,8 @@ defmodule Accounts.Commands.BlockCustomerAccount do
   Intent to block a customer account's outbound money, keeping inbound credits allowed.
   """
 
-  defstruct [:account_id, :reason]
+  use Accounts.Command, fields: [:account_id, :reason]
 
-  use ExConstructor
+  validates :account_id, presence: true
+  validates :reason, presence: true
 end

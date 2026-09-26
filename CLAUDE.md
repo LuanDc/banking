@@ -33,9 +33,12 @@ decision before changing its area.
     operation not built yet is marked `x-planned: true`.
   - Lint the spec with `npx @redocly/cli@1 lint <service>/openapi.yaml`.
   - Swagger UI: `docker compose up -d`, then http://localhost:8080.
+- **Commands declare their input rules** with `use Accounts.Command, fields: [...]` plus Vex
+  `validates` (one `validates` per field). The `ValidateCommand` middleware checks them before
+  dispatch. Business rules that need the aggregate's state stay in the aggregate (D14).
 - **Controllers call only the context entry point** (`Accounts.CustomerAccounts`,
   `Ledger.LedgerAccounts`, `Ledger.TransactionBatches`). It builds commands from the params with
-  ExConstructor (`use ExConstructor` in the command, `Command.new(params)`), dispatches them, and
+  ExConstructor (`Command.new(params)`, from `use Accounts.Command`), dispatches them, and
   holds the read-model queries.
 - Break a pipe into one step per line, starting from the value on its own line (`params`, then
   `|> Command.new()`, then `|> App.dispatch()`), even when it would fit on one.

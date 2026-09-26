@@ -16,6 +16,10 @@ defmodule AccountsWeb.ErrorJSON do
   # the template name. For example, "404.json" becomes
   # "Not Found".
   # An error a controller returns on purpose, with the code openapi.yaml documents (README, D12).
+  def render("error.json", %{code: code, detail: detail, fields: fields}) do
+    %{errors: %{code: code, detail: detail, fields: fields}}
+  end
+
   def render("error.json", %{code: code, detail: detail}) do
     %{errors: %{code: code, detail: detail}}
   end
