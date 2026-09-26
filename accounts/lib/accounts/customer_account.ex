@@ -158,6 +158,11 @@ defmodule Accounts.CustomerAccount do
     end
   end
 
+  # The Ledger books only into open ledger accounts (README, D5), each one opened for a customer
+  # account or the bank: a credit here for an account never opened is a broken pipeline, and
+  # failing makes the message visible in the dead-letter queue instead of posting into nothing.
+  def execute(%__MODULE__{status: nil}, %PostCredit{}), do: {:error, :account_not_found}
+
   def execute(%__MODULE__{} = account, %PostCredit{} = command) do
     # README, D4: a redelivered credit is posted only once.
     if MapSet.member?(account.posted_credits, command.correlation_id) do

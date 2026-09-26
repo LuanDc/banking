@@ -489,6 +489,10 @@ defmodule Accounts.CustomerAccountTest do
                post_credit(active_account(0), 400)
     end
 
+    test "rejects an account that was never opened, rather than posting into nothing" do
+      assert {:error, :account_not_found} = post_credit(%CustomerAccount{}, 400)
+    end
+
     test "ignores a redelivered credit that was already posted" do
       account = %CustomerAccount{active_account(400) | posted_credits: MapSet.new(["corr-1"])}
 
