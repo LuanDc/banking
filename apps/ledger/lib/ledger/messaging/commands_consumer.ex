@@ -18,6 +18,7 @@ defmodule Ledger.Messaging.CommandsConsumer do
   use Broadway
 
   alias Broadway.Message
+  alias Ledger.Lineage
   alias Ledger.Messaging.Inbox
 
   def start_link(_opts) do
@@ -34,8 +35,15 @@ defmodule Ledger.Messaging.CommandsConsumer do
 
   @impl Broadway
   def handle_message(_processor, %Message{} = message, _context) do
+    # README, D17: the command joins the message's conversation, caused by the message.
+    lineage =
+      message.metadata
+      |> Lineage.from_message()
+      |> Lineage.log()
+
     with {:ok, payload} <- decode(message.data),
-         :ok <- Inbox.handle(%{"type" => message.metadata.type, "payload" => payload}) do
+         :ok <-
+           Inbox.handle(%{"type" => message.metadata.type, "payload" => payload}, lineage) do
       message
     else
       {:error, reason} -> Message.failed(message, reason)
@@ -71,7 +79,7 @@ defmodule Ledger.Messaging.CommandsConsumer do
           {"x-dead-letter-routing-key", :longstr, dead_letter_queue}
         ]
       ],
-      metadata: [:type, :message_id],
+      metadata: [:type, :message_id, :correlation_id],
       on_success: :ack,
       on_failure: :reject
     ]

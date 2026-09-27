@@ -38,6 +38,11 @@ defmodule Accounts.Messaging.LedgerCommands do
   end
 
   defp message(type, payload, metadata) do
-    %{message_id: metadata.event_id, type: type, payload: payload}
+    %{
+      message_id: metadata.event_id,
+      correlation_id: metadata[:correlation_id],
+      type: type,
+      payload: payload
+    }
   end
 end

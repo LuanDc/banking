@@ -19,6 +19,7 @@ defmodule Ledger.Messaging.RabbitMQPublisherTest do
 
   @message %{
     message_id: "evt-1",
+    correlation_id: "corr-1",
     type: "LedgerBatchBooked",
     routing_key: "ledger.batch.booked",
     payload: %{batch_id: "batch-1"}
@@ -40,6 +41,8 @@ defmodule Ledger.Messaging.RabbitMQPublisherTest do
     assert {:ok, body, meta} = AMQP.Basic.get(channel, queue, no_ack: true)
     assert Jason.decode!(body) == %{"batch_id" => "batch-1"}
     assert %{message_id: "evt-1", type: "LedgerBatchBooked", persistent: true} = meta
+    # README, D17: the lineage travels as a property, never in the body.
+    assert meta.correlation_id == "corr-1"
     assert meta.routing_key == "ledger.batch.booked"
   end
 

@@ -7,7 +7,7 @@ defmodule Ledger.Messaging.LedgerEventsTest do
   alias Ledger.LedgerEntry
   alias Ledger.Messaging.LedgerEvents
 
-  @metadata %{event_id: "evt-1"}
+  @metadata %{event_id: "evt-1", correlation_id: "corr-1"}
   @entries [
     %LedgerEntry{account_id: "acc-1", type: :debit, amount: 1_000},
     %LedgerEntry{account_id: "acc-2", type: :credit, amount: 1_000}
@@ -22,6 +22,7 @@ defmodule Ledger.Messaging.LedgerEventsTest do
 
     assert LedgerEvents.for_event(event, @metadata) == %{
              message_id: "evt-1",
+             correlation_id: "corr-1",
              type: "LedgerBatchBooked",
              routing_key: "ledger.batch.booked",
              payload: %{batch_id: "batch-1", transfer_id: "corr-1", entries: @payload_entries}
@@ -38,6 +39,7 @@ defmodule Ledger.Messaging.LedgerEventsTest do
 
     assert LedgerEvents.for_event(event, @metadata) == %{
              message_id: "evt-1",
+             correlation_id: "corr-1",
              type: "LedgerBatchRejected",
              routing_key: "ledger.batch.rejected",
              payload: %{

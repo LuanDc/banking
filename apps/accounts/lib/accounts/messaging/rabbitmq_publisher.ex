@@ -145,14 +145,24 @@ defmodule Accounts.Messaging.RabbitMQPublisher do
   end
 
   defp basic_publish(state, message) do
-    AMQP.Basic.publish(state.channel, "", state.queue, Jason.encode!(message.payload),
-      message_id: message.message_id,
-      type: message.type,
-      content_type: "application/json",
-      persistent: true,
-      mandatory: true
-    )
+    options =
+      [
+        message_id: message.message_id,
+        type: message.type,
+        content_type: "application/json",
+        persistent: true,
+        mandatory: true
+      ]
+      |> with_correlation(Map.get(message, :correlation_id))
+
+    AMQP.Basic.publish(state.channel, "", state.queue, Jason.encode!(message.payload), options)
   end
+
+  # README, D17: the conversation's correlation_id travels as a property, never in the body.
+  defp with_correlation(options, nil), do: options
+
+  defp with_correlation(options, correlation_id),
+    do: [{:correlation_id, correlation_id} | options]
 
   # The broker sends basic.return before the confirm, but the client forwards returns through
   # the channel's consumer process while the confirm comes from the channel itself, so the

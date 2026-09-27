@@ -17,7 +17,12 @@ defmodule Accounts.Messaging.RabbitMQPublisherTest do
     %{channel: channel, queue: "test.ledger.commands.#{System.unique_integer([:positive])}"}
   end
 
-  @message %{message_id: "evt-1", type: "OpenLedgerAccount", payload: %{account_id: "acc-1"}}
+  @message %{
+    message_id: "evt-1",
+    correlation_id: "corr-1",
+    type: "OpenLedgerAccount",
+    payload: %{account_id: "acc-1"}
+  }
 
   test "publishes the message to the queue as persistent JSON", %{channel: channel, queue: queue} do
     {:ok, _} = AMQP.Queue.declare(channel, queue, exclusive: true)
@@ -28,6 +33,8 @@ defmodule Accounts.Messaging.RabbitMQPublisherTest do
     assert {:ok, body, meta} = AMQP.Basic.get(channel, queue, no_ack: true)
     assert Jason.decode!(body) == %{"account_id" => "acc-1"}
     assert %{message_id: "evt-1", type: "OpenLedgerAccount", persistent: true} = meta
+    # README, D17: the lineage travels as a property, never in the body.
+    assert meta.correlation_id == "corr-1"
     assert meta.content_type == "application/json"
   end
 

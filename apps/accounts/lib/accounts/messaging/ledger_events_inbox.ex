@@ -20,9 +20,10 @@ defmodule Accounts.Messaging.LedgerEventsInbox do
   alias Accounts.Commands.PostCredit
   alias Accounts.Commands.ReleaseBalance
 
-  def handle(message) do
+  @doc "Dispatches the message's commands, with the lineage it came with (README, D17)."
+  def handle(message, lineage \\ []) do
     with {:ok, commands} <- to_commands(message) do
-      Enum.reduce_while(commands, :ok, &dispatch/2)
+      Enum.reduce_while(commands, :ok, &dispatch(&1, &2, lineage))
     end
   end
 
@@ -36,8 +37,8 @@ defmodule Accounts.Messaging.LedgerEventsInbox do
 
   def to_commands(_message), do: {:error, :unknown_event}
 
-  defp dispatch(command, :ok) do
-    case App.dispatch(command) do
+  defp dispatch(command, :ok, lineage) do
+    case App.dispatch(command, lineage) do
       :ok -> {:cont, :ok}
       error -> {:halt, error}
     end

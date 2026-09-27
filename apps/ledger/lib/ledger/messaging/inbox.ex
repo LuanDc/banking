@@ -13,9 +13,10 @@ defmodule Ledger.Messaging.Inbox do
   alias Ledger.Commands.OpenLedgerAccount
   alias Ledger.LedgerEntry
 
-  def handle(message) do
+  @doc "Dispatches the message's command, with the lineage it came with (README, D17)."
+  def handle(message, lineage \\ []) do
     with {:ok, command} <- to_command(message) do
-      App.dispatch(command, dispatch_opts(command))
+      App.dispatch(command, dispatch_opts(command) ++ lineage)
     end
   end
 

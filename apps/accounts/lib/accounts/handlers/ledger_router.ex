@@ -24,16 +24,23 @@ defmodule Accounts.Handlers.LedgerRouter do
   alias Accounts.Commands.ReleaseBalance
   alias Accounts.Events.BalanceReserved
   alias Accounts.Events.CreditRejected
+  alias Accounts.Lineage
   alias Commanded.Event.FailureContext
 
   @max_retry_delay :timer.minutes(5)
 
   @impl Commanded.Event.Handler
-  def handle(event, _metadata) do
+  def handle(event, metadata) do
+    # README, D17: each command joins the event's conversation, caused by the event.
+    lineage =
+      metadata
+      |> Lineage.from_event()
+      |> Lineage.log()
+
     event
     |> commands_for()
     |> Enum.reduce_while(:ok, fn command, :ok ->
-      case App.dispatch(command) do
+      case App.dispatch(command, lineage) do
         :ok -> {:cont, :ok}
         error -> {:halt, error}
       end

@@ -7,13 +7,14 @@ defmodule Accounts.Messaging.LedgerCommandsTest do
   alias Accounts.Messaging.BatchId
   alias Accounts.Messaging.LedgerCommands
 
-  @metadata %{event_id: "evt-1"}
+  @metadata %{event_id: "evt-1", correlation_id: "corr-1"}
 
   test "opens the ledger account of a newly opened customer account" do
     event = %CustomerAccountOpened{account_id: "acc-1", customer_id: "cus-1"}
 
     assert LedgerCommands.for_event(event, @metadata) == %{
              message_id: "evt-1",
+             correlation_id: "corr-1",
              type: "OpenLedgerAccount",
              payload: %{account_id: "acc-1"}
            }
@@ -24,6 +25,7 @@ defmodule Accounts.Messaging.LedgerCommandsTest do
 
     assert LedgerCommands.for_event(event, @metadata) == %{
              message_id: "evt-1",
+             correlation_id: "corr-1",
              type: "CloseLedgerAccount",
              payload: %{account_id: "acc-1"}
            }
@@ -41,6 +43,7 @@ defmodule Accounts.Messaging.LedgerCommandsTest do
     # command hits a batch already decided (D4).
     assert LedgerCommands.for_event(event, @metadata) == %{
              message_id: "evt-1",
+             correlation_id: "corr-1",
              type: "BookTransactionBatch",
              payload: %{
                batch_id: BatchId.settlement("corr-1"),

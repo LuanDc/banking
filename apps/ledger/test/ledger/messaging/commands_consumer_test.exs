@@ -16,6 +16,29 @@ defmodule Ledger.Messaging.CommandsConsumerTest do
     assert_receive {:ack, ^ref, [_successful], []}, 5_000
   end
 
+  @tag :integration
+  test "the command it dispatches joins the message's conversation, caused by the message" do
+    account_id = Ecto.UUID.generate()
+    body = Jason.encode!(%{account_id: account_id})
+    [correlation_id, message_id] = [Ecto.UUID.generate(), Ecto.UUID.generate()]
+
+    ref =
+      Broadway.test_message(CommandsConsumer, body,
+        metadata: %{
+          type: "OpenLedgerAccount",
+          correlation_id: correlation_id,
+          message_id: message_id
+        }
+      )
+
+    assert_receive {:ack, ^ref, [_successful], []}, 5_000
+
+    {:ok, [opened]} =
+      Ledger.EventStore.read_stream_backward("ledger-account-" <> account_id, -1, 1)
+
+    assert {opened.correlation_id, opened.causation_id} == {correlation_id, message_id}
+  end
+
   test "fails a message whose command the Ledger does not accept" do
     ref =
       Broadway.test_message(CommandsConsumer, ~s({"account_id": "acc-1"}),

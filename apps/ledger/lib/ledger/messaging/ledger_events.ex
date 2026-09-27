@@ -38,6 +38,12 @@ defmodule Ledger.Messaging.LedgerEvents do
   end
 
   defp message(type, routing_key, metadata, payload) do
-    %{message_id: metadata.event_id, type: type, routing_key: routing_key, payload: payload}
+    %{
+      message_id: metadata.event_id,
+      correlation_id: metadata[:correlation_id],
+      type: type,
+      routing_key: routing_key,
+      payload: payload
+    }
   end
 end
