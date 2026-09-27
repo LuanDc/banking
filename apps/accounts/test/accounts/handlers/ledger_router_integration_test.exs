@@ -22,13 +22,13 @@ defmodule Accounts.Handlers.LedgerRouterIntegrationTest do
     event = %BalanceReserved{
       account_id: Ecto.UUID.generate(),
       amount: 400,
-      correlation_id: Ecto.UUID.generate(),
+      transfer_id: Ecto.UUID.generate(),
       to_account_id: destination
     }
 
     assert :ok = LedgerRouter.handle(event, %{})
 
     state = Aggregate.aggregate_state(App, CustomerAccount, "customer-account-" <> destination)
-    assert state.pending_credits == %{event.correlation_id => 400}
+    assert state.pending_credits == %{event.transfer_id => 400}
   end
 end

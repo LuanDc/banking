@@ -17,7 +17,7 @@ defmodule Accounts.Handlers.Projectors.CreditsProjectorTest do
 
     assert %Credit{
              account_id: "acc-1",
-             correlation_id: "corr-1",
+             transfer_id: "corr-1",
              amount: 400,
              status: :authorized,
              authorized_at: @authorized_at,
@@ -27,7 +27,7 @@ defmodule Accounts.Handlers.Projectors.CreditsProjectorTest do
 
   test "a posted credit is settled as posted and keeps its authorization" do
     authorize()
-    :ok = project(%CreditPosted{account_id: "acc-1", correlation_id: "corr-1", amount: 400}, 2)
+    :ok = project(%CreditPosted{account_id: "acc-1", transfer_id: "corr-1", amount: 400}, 2)
 
     assert %Credit{status: :posted, authorized_at: @authorized_at, settled_at: @settled_at} =
              Repo.one(Credit)
@@ -35,7 +35,7 @@ defmodule Accounts.Handlers.Projectors.CreditsProjectorTest do
 
   # README, D2: money from a settlement account is posted with no authorization first.
   test "a credit posted with no authorization is recorded as posted" do
-    :ok = project(%CreditPosted{account_id: "acc-1", correlation_id: "pix-1", amount: 700}, 1)
+    :ok = project(%CreditPosted{account_id: "acc-1", transfer_id: "pix-1", amount: 700}, 1)
 
     assert %Credit{status: :posted, amount: 700, authorized_at: nil, settled_at: @settled_at} =
              Repo.one(Credit)
@@ -43,7 +43,7 @@ defmodule Accounts.Handlers.Projectors.CreditsProjectorTest do
 
   test "a cancelled credit is settled as cancelled" do
     authorize()
-    :ok = project(%CreditCancelled{account_id: "acc-1", correlation_id: "corr-1", amount: 400}, 2)
+    :ok = project(%CreditCancelled{account_id: "acc-1", transfer_id: "corr-1", amount: 400}, 2)
 
     assert %Credit{status: :cancelled, settled_at: @settled_at} = Repo.one(Credit)
   end
@@ -51,7 +51,7 @@ defmodule Accounts.Handlers.Projectors.CreditsProjectorTest do
   test "a rejected credit is recorded with its reason" do
     event = %CreditRejected{
       account_id: "acc-1",
-      correlation_id: "corr-1",
+      transfer_id: "corr-1",
       amount: 400,
       reason: :credit_not_allowed
     }
@@ -80,7 +80,7 @@ defmodule Accounts.Handlers.Projectors.CreditsProjectorTest do
   end
 
   defp authorize do
-    event = %CreditAuthorized{account_id: "acc-1", correlation_id: "corr-1", amount: 400}
+    event = %CreditAuthorized{account_id: "acc-1", transfer_id: "corr-1", amount: 400}
     :ok = project(event, 1, @authorized_at)
   end
 

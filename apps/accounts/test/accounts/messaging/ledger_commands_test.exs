@@ -32,11 +32,11 @@ defmodule Accounts.Messaging.LedgerCommandsTest do
     event = %CreditAuthorized{
       account_id: "acc-2",
       amount: 400,
-      correlation_id: "corr-1",
+      transfer_id: "corr-1",
       from_account_id: "acc-1"
     }
 
-    # README, D4: the batch id derives from the correlation id, so a redelivered command hits a
+    # README, D4: the batch id derives from the transfer id, so a redelivered command hits a
     # batch already decided.
     assert LedgerCommands.for_event(event, @metadata) == %{
              message_id: "evt-1",

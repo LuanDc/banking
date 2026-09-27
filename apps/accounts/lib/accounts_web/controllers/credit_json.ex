@@ -4,6 +4,8 @@ defmodule AccountsWeb.CreditJSON do
   end
 
   defp data(credit) do
-    Map.take(credit, [:correlation_id, :amount, :status, :reason, :authorized_at, :settled_at])
+    credit
+    |> Map.take([:amount, :status, :reason, :authorized_at, :settled_at])
+    |> Map.put(:correlation_id, credit.transfer_id)
   end
 end

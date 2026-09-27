@@ -4,5 +4,5 @@ defmodule Accounts.Events.CreditAuthorized do
   """
 
   @derive Jason.Encoder
-  defstruct [:account_id, :amount, :correlation_id, :from_account_id]
+  defstruct [:account_id, :amount, :transfer_id, :from_account_id]
 end

@@ -257,7 +257,7 @@ paths:
           description: |
             The command is invalid, or the reservation was rejected (`BalanceReservationRejected`).
             `code` is `validation_failed`, with the offending `fields` (the Idempotency-Key is
-            the `correlation_id`), or one of `account_not_active` or `insufficient_balance`.
+            the `transfer_id`), or one of `account_not_active` or `insufficient_balance`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -311,7 +311,7 @@ paths:
           description: |
             The command is invalid, or the credit was rejected (`CreditRejected`). `code` is
             `validation_failed`, with the offending `fields` (the Idempotency-Key is the
-            `correlation_id`), or `credit_not_allowed`.
+            `transfer_id`), or `credit_not_allowed`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

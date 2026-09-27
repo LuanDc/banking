@@ -11,7 +11,7 @@ defmodule Accounts.CommandTest do
       command = %Commands.ReserveBalance{
         account_id: "acc-1",
         amount: 400,
-        correlation_id: "corr-1",
+        transfer_id: "corr-1",
         to_account_id: "acc-2"
       }
 
@@ -59,21 +59,21 @@ defmodule Accounts.CommandTest do
             Commands.PostCredit,
             Commands.CancelCredit
           ] do
-        assert %{correlation_id: ["must be present"]} = invalid(struct(module, account_id: "a"))
+        assert %{transfer_id: ["must be present"]} = invalid(struct(module, account_id: "a"))
       end
     end
 
     test "an amount is a positive integer number of cents (README, D1)" do
       for amount <- [nil, 0, -100, 10.5, "400"],
           module <- [Commands.ReserveBalance, Commands.AuthorizeCredit, Commands.PostCredit] do
-        command = struct(module, account_id: "acc-1", correlation_id: "corr-1", amount: amount)
+        command = struct(module, account_id: "acc-1", transfer_id: "corr-1", amount: amount)
 
         assert %{amount: ["must be a positive integer number of cents"]} = invalid(command)
       end
     end
 
     test "a transfer goes to another account" do
-      base = %Commands.ReserveBalance{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
+      base = %Commands.ReserveBalance{account_id: "acc-1", amount: 400, transfer_id: "corr-1"}
 
       assert invalid(base) == %{to_account_id: ["must be present"]}
 
@@ -82,7 +82,7 @@ defmodule Accounts.CommandTest do
     end
 
     test "a credit names where the money comes from" do
-      command = %Commands.AuthorizeCredit{account_id: "acc-1", amount: 400, correlation_id: "c"}
+      command = %Commands.AuthorizeCredit{account_id: "acc-1", amount: 400, transfer_id: "c"}
 
       assert invalid(command) == %{from_account_id: ["must be present"]}
     end

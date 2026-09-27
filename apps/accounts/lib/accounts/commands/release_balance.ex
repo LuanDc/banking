@@ -4,8 +4,8 @@ defmodule Accounts.Commands.ReleaseBalance do
   Ledger rejected.
   """
 
-  use Accounts.Command, fields: [:account_id, :correlation_id]
+  use Accounts.Command, fields: [:account_id, :transfer_id]
 
   validates :account_id, presence: true
-  validates :correlation_id, presence: true
+  validates :transfer_id, presence: true
 end

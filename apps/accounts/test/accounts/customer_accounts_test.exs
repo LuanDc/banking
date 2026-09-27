@@ -101,22 +101,22 @@ defmodule Accounts.CustomerAccountsTest do
 
       assert {:ok,
               %{
-                correlation_id: correlation_id,
+                correlation_id: transfer_id,
                 from_account_id: from,
                 to_account_id: "acc-2",
                 amount: 400,
                 status: :pending,
                 reason: nil
-              }} = CustomerAccounts.get_transfer(reservation.correlation_id)
+              }} = CustomerAccounts.get_transfer(reservation.transfer_id)
 
-      assert {correlation_id, from} == {reservation.correlation_id, reservation.account_id}
+      assert {transfer_id, from} == {reservation.transfer_id, reservation.account_id}
     end
 
     test "completes once the reservation is confirmed" do
       reservation = insert(:reservation, to_account_id: "acc-2", status: :confirmed)
 
       assert {:ok, %{status: :completed, reason: nil}} =
-               CustomerAccounts.get_transfer(reservation.correlation_id)
+               CustomerAccounts.get_transfer(reservation.transfer_id)
     end
 
     test "fails with the reservation's rejection" do
@@ -124,7 +124,7 @@ defmodule Accounts.CustomerAccountsTest do
         insert(:reservation, status: :rejected, reason: "insufficient_balance")
 
       assert {:ok, %{status: :failed, reason: "insufficient_balance"}} =
-               CustomerAccounts.get_transfer(reservation.correlation_id)
+               CustomerAccounts.get_transfer(reservation.transfer_id)
     end
 
     test "fails with the credit's rejection once the reservation is released" do
@@ -132,13 +132,13 @@ defmodule Accounts.CustomerAccountsTest do
 
       insert(:credit,
         account_id: "acc-2",
-        correlation_id: reservation.correlation_id,
+        transfer_id: reservation.transfer_id,
         status: :rejected,
         reason: "credit_not_allowed"
       )
 
       assert {:ok, %{status: :failed, reason: "credit_not_allowed"}} =
-               CustomerAccounts.get_transfer(reservation.correlation_id)
+               CustomerAccounts.get_transfer(reservation.transfer_id)
     end
 
     test "fails as batch_rejected when the Ledger refused the batch" do
@@ -146,12 +146,12 @@ defmodule Accounts.CustomerAccountsTest do
 
       insert(:credit,
         account_id: "acc-2",
-        correlation_id: reservation.correlation_id,
+        transfer_id: reservation.transfer_id,
         status: :cancelled
       )
 
       assert {:ok, %{status: :failed, reason: "batch_rejected"}} =
-               CustomerAccounts.get_transfer(reservation.correlation_id)
+               CustomerAccounts.get_transfer(reservation.transfer_id)
     end
 
     test "is not found without a reservation, e.g. for a deposit" do

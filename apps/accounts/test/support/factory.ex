@@ -38,7 +38,7 @@ defmodule Accounts.Factory do
   def reservation_factory do
     %Reservation{
       account_id: Ecto.UUID.generate(),
-      correlation_id: sequence(:correlation_id, &"corr-#{&1}"),
+      transfer_id: sequence(:transfer_id, &"corr-#{&1}"),
       amount: 400,
       status: :open,
       reserved_at: DateTime.utc_now()
@@ -48,7 +48,7 @@ defmodule Accounts.Factory do
   def credit_factory do
     %Credit{
       account_id: Ecto.UUID.generate(),
-      correlation_id: sequence(:correlation_id, &"corr-#{&1}"),
+      transfer_id: sequence(:transfer_id, &"corr-#{&1}"),
       amount: 400,
       status: :authorized,
       authorized_at: DateTime.utc_now()

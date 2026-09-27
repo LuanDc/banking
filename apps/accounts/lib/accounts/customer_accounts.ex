@@ -90,13 +90,13 @@ defmodule Accounts.CustomerAccounts do
   @doc """
   Starts a transfer by reserving `params[\"amount\"]` on `params[\"from_account_id\"]`
   for `params[\"to_account_id\"]` (README, section 5). The idempotency key is the saga's
-  `correlation_id` (D4): a repeated key starts nothing new and returns the transfer as it stands.
+  `transfer_id` (D4): a repeated key starts nothing new and returns the transfer as it stands.
   """
   def transfer_money(params, idempotency_key) do
     command =
       params
       |> Map.put("account_id", params["from_account_id"])
-      |> Map.put("correlation_id", idempotency_key)
+      |> Map.put("transfer_id", idempotency_key)
       |> ReserveBalance.new()
 
     case dispatch_for_events(command) do
@@ -110,12 +110,12 @@ defmodule Accounts.CustomerAccounts do
   @doc """
   Receives an inbound PIX of `params[\"amount\"]` into `params[\"account_id\"]`: a credit
   from the bank's PIX settlement account (README, D2), authorized like any other. The idempotency
-  key is its `correlation_id` (D4): a repeated key credits nothing twice.
+  key is its `transfer_id` (D4): a repeated key credits nothing twice.
   """
   def deposit(params, idempotency_key) do
     command =
       params
-      |> Map.put("correlation_id", idempotency_key)
+      |> Map.put("transfer_id", idempotency_key)
       |> Map.put("from_account_id", BankAccounts.pix_settlement())
       |> AuthorizeCredit.new()
 
@@ -124,7 +124,12 @@ defmodule Accounts.CustomerAccounts do
         {:error, reason}
 
       {:ok, _authorized_or_repeated} ->
-        {:ok, Map.take(command, [:correlation_id, :account_id, :amount])}
+        {:ok,
+         %{
+           correlation_id: command.transfer_id,
+           account_id: command.account_id,
+           amount: command.amount
+         }}
 
       {:error, _reason} = error ->
         error
@@ -178,10 +183,10 @@ defmodule Accounts.CustomerAccounts do
   `pending` while the reservation is open, `completed` once confirmed, `failed` once rejected or
   released.
   """
-  def get_transfer(correlation_id) do
+  def get_transfer(transfer_id) do
     reservation =
       Reservation
-      |> where(correlation_id: ^correlation_id)
+      |> where(transfer_id: ^transfer_id)
       |> Repo.one()
 
     case reservation do
@@ -192,14 +197,14 @@ defmodule Accounts.CustomerAccounts do
         credit =
           Credit
           |> where(
-            correlation_id: ^correlation_id,
+            transfer_id: ^transfer_id,
             account_id: ^(reservation.to_account_id || "")
           )
           |> Repo.one()
 
         {:ok,
          %{
-           correlation_id: reservation.correlation_id,
+           correlation_id: reservation.transfer_id,
            from_account_id: reservation.account_id,
            to_account_id: reservation.to_account_id,
            amount: reservation.amount,
@@ -219,7 +224,7 @@ defmodule Accounts.CustomerAccounts do
 
   # The read model may not show the first request yet.
   defp current_transfer(command) do
-    case get_transfer(command.correlation_id) do
+    case get_transfer(command.transfer_id) do
       {:error, :not_found} -> {:ok, pending_transfer(command)}
       found -> found
     end
@@ -227,7 +232,7 @@ defmodule Accounts.CustomerAccounts do
 
   defp pending_transfer(command) do
     %{
-      correlation_id: command.correlation_id,
+      correlation_id: command.transfer_id,
       from_account_id: command.account_id,
       to_account_id: command.to_account_id,
       amount: command.amount,

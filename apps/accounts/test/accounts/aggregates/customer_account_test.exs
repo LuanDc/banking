@@ -222,11 +222,11 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
       command = %ReserveBalance{
         account_id: "acc-1",
         amount: 400,
-        correlation_id: "corr-1",
+        transfer_id: "corr-1",
         to_account_id: "acc-2"
       }
 
-      assert %BalanceReserved{account_id: "acc-1", amount: 400, correlation_id: "corr-1"} =
+      assert %BalanceReserved{account_id: "acc-1", amount: 400, transfer_id: "corr-1"} =
                CustomerAccount.execute(account, command)
     end
 
@@ -234,7 +234,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
       assert %BalanceReservationRejected{
                account_id: "acc-1",
                amount: 1_001,
-               correlation_id: "corr-1",
+               transfer_id: "corr-1",
                reason: :insufficient_balance
              } = reserve(active_account(1_000), 1_001)
     end
@@ -283,7 +283,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
 
       confirmed = %ReservationConfirmed{
         account_id: "acc-1",
-        correlation_id: "corr-1",
+        transfer_id: "corr-1",
         amount: 400
       }
 
@@ -298,21 +298,21 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
 
   describe "ConfirmReservation" do
     test "emits ReservationConfirmed for an open reservation" do
-      command = %ConfirmReservation{account_id: "acc-1", correlation_id: "corr-1"}
+      command = %ConfirmReservation{account_id: "acc-1", transfer_id: "corr-1"}
 
-      assert %ReservationConfirmed{account_id: "acc-1", correlation_id: "corr-1", amount: 400} =
+      assert %ReservationConfirmed{account_id: "acc-1", transfer_id: "corr-1", amount: 400} =
                CustomerAccount.execute(with_reservation(), command)
     end
 
     test "confirms on a frozen account: a transfer in flight finishes (H5)" do
       frozen = %CustomerAccount{with_reservation() | status: :frozen}
-      command = %ConfirmReservation{account_id: "acc-1", correlation_id: "corr-1"}
+      command = %ConfirmReservation{account_id: "acc-1", transfer_id: "corr-1"}
 
       assert %ReservationConfirmed{amount: 400} = CustomerAccount.execute(frozen, command)
     end
 
     test "ignores a reservation that is not open, e.g. one already confirmed" do
-      command = %ConfirmReservation{account_id: "acc-1", correlation_id: "corr-9"}
+      command = %ConfirmReservation{account_id: "acc-1", transfer_id: "corr-9"}
 
       assert [] = CustomerAccount.execute(with_reservation(), command)
     end
@@ -320,21 +320,21 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
 
   describe "ReleaseBalance" do
     test "emits BalanceReleased for an open reservation" do
-      command = %ReleaseBalance{account_id: "acc-1", correlation_id: "corr-1"}
+      command = %ReleaseBalance{account_id: "acc-1", transfer_id: "corr-1"}
 
-      assert %BalanceReleased{account_id: "acc-1", correlation_id: "corr-1", amount: 400} =
+      assert %BalanceReleased{account_id: "acc-1", transfer_id: "corr-1", amount: 400} =
                CustomerAccount.execute(with_reservation(), command)
     end
 
     test "releases on a frozen account: a transfer in flight finishes (H5)" do
       frozen = %CustomerAccount{with_reservation() | status: :frozen}
-      command = %ReleaseBalance{account_id: "acc-1", correlation_id: "corr-1"}
+      command = %ReleaseBalance{account_id: "acc-1", transfer_id: "corr-1"}
 
       assert %BalanceReleased{amount: 400} = CustomerAccount.execute(frozen, command)
     end
 
     test "ignores a reservation that is not open, e.g. one already released" do
-      command = %ReleaseBalance{account_id: "acc-1", correlation_id: "corr-9"}
+      command = %ReleaseBalance{account_id: "acc-1", transfer_id: "corr-9"}
 
       assert [] = CustomerAccount.execute(with_reservation(), command)
     end
@@ -342,7 +342,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
 
   describe "AuthorizeCredit" do
     test "emits CreditAuthorized for an active account" do
-      assert %CreditAuthorized{account_id: "acc-1", amount: 400, correlation_id: "corr-1"} =
+      assert %CreditAuthorized{account_id: "acc-1", amount: 400, transfer_id: "corr-1"} =
                authorize_credit(active_account(0), 400)
     end
 
@@ -371,7 +371,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
       assert %CreditRejected{
                account_id: "acc-1",
                amount: 400,
-               correlation_id: "corr-1",
+               transfer_id: "corr-1",
                reason: :credit_not_allowed
              } = authorize_credit(frozen, 400)
     end
@@ -401,7 +401,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
     end
 
     test "ignores a repeated command for a credit already cancelled" do
-      cancelled = %CreditCancelled{account_id: "acc-1", correlation_id: "corr-1", amount: 400}
+      cancelled = %CreditCancelled{account_id: "acc-1", transfer_id: "corr-1", amount: 400}
 
       account =
         active_account(0)
@@ -414,7 +414,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
 
   describe "PostCredit" do
     test "emits CreditPosted for a credit the Ledger booked" do
-      assert %CreditPosted{account_id: "acc-1", amount: 400, correlation_id: "corr-1"} =
+      assert %CreditPosted{account_id: "acc-1", amount: 400, transfer_id: "corr-1"} =
                post_credit(active_account(0), 400)
     end
 
@@ -438,14 +438,14 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
   describe "CancelCredit" do
     test "emits CreditCancelled for a pending credit whose batch the Ledger rejected" do
       account = %CustomerAccount{active_account(0) | pending_credits: %{"corr-1" => 400}}
-      command = %CancelCredit{account_id: "acc-1", correlation_id: "corr-1"}
+      command = %CancelCredit{account_id: "acc-1", transfer_id: "corr-1"}
 
-      assert %CreditCancelled{account_id: "acc-1", correlation_id: "corr-1", amount: 400} =
+      assert %CreditCancelled{account_id: "acc-1", transfer_id: "corr-1", amount: 400} =
                CustomerAccount.execute(account, command)
     end
 
     test "ignores a credit that is not pending, e.g. one already cancelled" do
-      command = %CancelCredit{account_id: "acc-1", correlation_id: "corr-1"}
+      command = %CancelCredit{account_id: "acc-1", transfer_id: "corr-1"}
 
       assert [] = CustomerAccount.execute(active_account(0), command)
     end
@@ -522,14 +522,14 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
 
   describe "applying BalanceReserved" do
     test "holds the amount out of the available balance" do
-      event = %BalanceReserved{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
+      event = %BalanceReserved{account_id: "acc-1", amount: 400, transfer_id: "corr-1"}
 
       assert %CustomerAccount{available_balance: 600} =
                CustomerAccount.apply(active_account(1_000), event)
     end
 
     test "records the reservation under its correlation id" do
-      event = %BalanceReserved{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
+      event = %BalanceReserved{account_id: "acc-1", amount: 400, transfer_id: "corr-1"}
 
       assert %CustomerAccount{reservations: %{"corr-1" => 400}} =
                CustomerAccount.apply(active_account(1_000), event)
@@ -541,7 +541,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
       event = %BalanceReservationRejected{
         account_id: "acc-1",
         amount: 1_001,
-        correlation_id: "corr-1",
+        transfer_id: "corr-1",
         reason: :insufficient_balance
       }
 
@@ -555,7 +555,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
 
   describe "applying ReservationConfirmed" do
     test "settles the reservation, leaving the available balance as it was" do
-      event = %ReservationConfirmed{account_id: "acc-1", correlation_id: "corr-1", amount: 400}
+      event = %ReservationConfirmed{account_id: "acc-1", transfer_id: "corr-1", amount: 400}
 
       assert %CustomerAccount{available_balance: 600, reservations: reservations} =
                CustomerAccount.apply(with_reservation(), event)
@@ -566,7 +566,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
 
   describe "applying BalanceReleased" do
     test "gives the reserved amount back to the available balance" do
-      event = %BalanceReleased{account_id: "acc-1", correlation_id: "corr-1", amount: 400}
+      event = %BalanceReleased{account_id: "acc-1", transfer_id: "corr-1", amount: 400}
 
       assert %CustomerAccount{available_balance: 1_000, reservations: reservations} =
                CustomerAccount.apply(with_reservation(), event)
@@ -577,7 +577,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
 
   describe "applying CreditAuthorized" do
     test "records the credit as pending until the Ledger books it" do
-      event = %CreditAuthorized{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
+      event = %CreditAuthorized{account_id: "acc-1", amount: 400, transfer_id: "corr-1"}
 
       assert %CustomerAccount{available_balance: 1_000, pending_credits: %{"corr-1" => 400}} =
                CustomerAccount.apply(active_account(1_000), event)
@@ -589,7 +589,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
       event = %CreditRejected{
         account_id: "acc-1",
         amount: 400,
-        correlation_id: "corr-1",
+        transfer_id: "corr-1",
         reason: :credit_not_allowed
       }
 
@@ -603,14 +603,14 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
 
   describe "applying CreditPosted" do
     test "adds the amount to the available balance" do
-      event = %CreditPosted{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
+      event = %CreditPosted{account_id: "acc-1", amount: 400, transfer_id: "corr-1"}
 
       assert %CustomerAccount{available_balance: 1_400} =
                CustomerAccount.apply(active_account(1_000), event)
     end
 
     test "remembers the correlation id, so the credit is not posted twice" do
-      event = %CreditPosted{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
+      event = %CreditPosted{account_id: "acc-1", amount: 400, transfer_id: "corr-1"}
 
       assert %CustomerAccount{posted_credits: posted_credits} =
                CustomerAccount.apply(active_account(1_000), event)
@@ -620,7 +620,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
 
     test "clears the pending credit it settles" do
       account = %CustomerAccount{active_account(1_000) | pending_credits: %{"corr-1" => 400}}
-      event = %CreditPosted{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
+      event = %CreditPosted{account_id: "acc-1", amount: 400, transfer_id: "corr-1"}
 
       assert %CustomerAccount{pending_credits: pending_credits} =
                CustomerAccount.apply(account, event)
@@ -632,7 +632,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
   describe "applying CreditCancelled" do
     test "drops the pending credit, leaving the available balance as it was" do
       account = %CustomerAccount{active_account(1_000) | pending_credits: %{"corr-1" => 400}}
-      event = %CreditCancelled{account_id: "acc-1", correlation_id: "corr-1", amount: 400}
+      event = %CreditCancelled{account_id: "acc-1", transfer_id: "corr-1", amount: 400}
 
       assert %CustomerAccount{available_balance: 1_000, pending_credits: pending_credits} =
                CustomerAccount.apply(account, event)
@@ -669,7 +669,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
     command = %AuthorizeCredit{
       account_id: "acc-1",
       amount: amount,
-      correlation_id: "corr-1",
+      transfer_id: "corr-1",
       from_account_id: "acc-2"
     }
 
@@ -677,7 +677,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
   end
 
   defp post_credit(account, amount) do
-    command = %PostCredit{account_id: "acc-1", amount: amount, correlation_id: "corr-1"}
+    command = %PostCredit{account_id: "acc-1", amount: amount, transfer_id: "corr-1"}
     CustomerAccount.execute(account, command)
   end
 
@@ -685,7 +685,7 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
     command = %ReserveBalance{
       account_id: "acc-1",
       amount: amount,
-      correlation_id: "corr-1",
+      transfer_id: "corr-1",
       to_account_id: "acc-2"
     }
 

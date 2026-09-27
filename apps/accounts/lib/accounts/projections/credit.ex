@@ -7,7 +7,7 @@ defmodule Accounts.Projections.Credit do
 
   schema "credits" do
     field :account_id, :string
-    field :correlation_id, :string
+    field :transfer_id, :string
     field :amount, :integer
     field :status, Ecto.Enum, values: [:authorized, :posted, :cancelled, :rejected]
     field :reason, :string

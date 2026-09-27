@@ -19,14 +19,14 @@ defmodule Accounts.Messaging.LedgerCommands do
     message("CloseLedgerAccount", %{account_id: event.account_id}, metadata)
   end
 
-  # README, D4: the batch id derives from the correlation id, so a redelivered command hits a
+  # README, D4: the batch id derives from the transfer id, so a redelivered command hits a
   # batch already decided and books nothing twice.
   def for_event(%CreditAuthorized{} = event, metadata) do
     message(
       "BookTransactionBatch",
       %{
-        batch_id: event.correlation_id,
-        correlation_id: event.correlation_id,
+        batch_id: event.transfer_id,
+        correlation_id: event.transfer_id,
         entries: [
           %{account_id: event.from_account_id, type: "debit", amount: event.amount},
           %{account_id: event.account_id, type: "credit", amount: event.amount}

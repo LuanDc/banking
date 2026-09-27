@@ -17,7 +17,7 @@ defmodule Accounts.Handlers.Projectors.ReservationsProjectorTest do
 
     assert %Reservation{
              account_id: "acc-1",
-             correlation_id: "corr-1",
+             transfer_id: "corr-1",
              to_account_id: "acc-2",
              amount: 400,
              status: :open,
@@ -31,7 +31,7 @@ defmodule Accounts.Handlers.Projectors.ReservationsProjectorTest do
 
     :ok =
       project(
-        %ReservationConfirmed{account_id: "acc-1", correlation_id: "corr-1", amount: 400},
+        %ReservationConfirmed{account_id: "acc-1", transfer_id: "corr-1", amount: 400},
         2
       )
 
@@ -40,7 +40,7 @@ defmodule Accounts.Handlers.Projectors.ReservationsProjectorTest do
 
   test "a released reservation is settled as released" do
     reserve()
-    :ok = project(%BalanceReleased{account_id: "acc-1", correlation_id: "corr-1", amount: 400}, 2)
+    :ok = project(%BalanceReleased{account_id: "acc-1", transfer_id: "corr-1", amount: 400}, 2)
 
     assert %Reservation{status: :released, settled_at: @settled_at} = Repo.one(Reservation)
   end
@@ -77,7 +77,7 @@ defmodule Accounts.Handlers.Projectors.ReservationsProjectorTest do
   defp rejected do
     %BalanceReservationRejected{
       account_id: "acc-1",
-      correlation_id: "corr-1",
+      transfer_id: "corr-1",
       amount: 400,
       reason: :insufficient_balance,
       to_account_id: "acc-2"
@@ -87,7 +87,7 @@ defmodule Accounts.Handlers.Projectors.ReservationsProjectorTest do
   defp reserve do
     event = %BalanceReserved{
       account_id: "acc-1",
-      correlation_id: "corr-1",
+      transfer_id: "corr-1",
       amount: 400,
       to_account_id: "acc-2"
     }

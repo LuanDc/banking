@@ -10,7 +10,7 @@ defmodule Accounts.Messaging.LedgerEventsInbox do
     * `LedgerBatchRejected` releases each debited reservation and cancels each pending credit.
 
   The bank's own accounts are left out: no `CustomerAccount` stands behind them. Every command is
-  idempotent by `correlation_id` (D4), so a redelivered event changes nothing.
+  idempotent by `transfer_id` (D4), so a redelivered event changes nothing.
   """
 
   alias Accounts.App
@@ -49,23 +49,23 @@ defmodule Accounts.Messaging.LedgerEventsInbox do
     |> Enum.map(&command_for.(&1, payload["correlation_id"]))
   end
 
-  defp booked(%{"type" => "debit"} = entry, correlation_id) do
-    %ConfirmReservation{account_id: entry["account_id"], correlation_id: correlation_id}
+  defp booked(%{"type" => "debit"} = entry, transfer_id) do
+    %ConfirmReservation{account_id: entry["account_id"], transfer_id: transfer_id}
   end
 
-  defp booked(%{"type" => "credit"} = entry, correlation_id) do
+  defp booked(%{"type" => "credit"} = entry, transfer_id) do
     %PostCredit{
       account_id: entry["account_id"],
       amount: entry["amount"],
-      correlation_id: correlation_id
+      transfer_id: transfer_id
     }
   end
 
-  defp rejected(%{"type" => "debit"} = entry, correlation_id) do
-    %ReleaseBalance{account_id: entry["account_id"], correlation_id: correlation_id}
+  defp rejected(%{"type" => "debit"} = entry, transfer_id) do
+    %ReleaseBalance{account_id: entry["account_id"], transfer_id: transfer_id}
   end
 
-  defp rejected(%{"type" => "credit"} = entry, correlation_id) do
-    %CancelCredit{account_id: entry["account_id"], correlation_id: correlation_id}
+  defp rejected(%{"type" => "credit"} = entry, transfer_id) do
+    %CancelCredit{account_id: entry["account_id"], transfer_id: transfer_id}
   end
 end

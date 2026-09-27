@@ -18,7 +18,7 @@ defmodule Accounts.Handlers.Projectors.ReservationsProjector do
   project %BalanceReserved{} = event, metadata, fn multi ->
     Ecto.Multi.insert(multi, :reservation, %Reservation{
       account_id: event.account_id,
-      correlation_id: event.correlation_id,
+      transfer_id: event.transfer_id,
       to_account_id: event.to_account_id,
       amount: event.amount,
       status: :open,
@@ -29,7 +29,7 @@ defmodule Accounts.Handlers.Projectors.ReservationsProjector do
   project %BalanceReservationRejected{} = event, metadata, fn multi ->
     Ecto.Multi.insert(multi, :reservation, %Reservation{
       account_id: event.account_id,
-      correlation_id: event.correlation_id,
+      transfer_id: event.transfer_id,
       to_account_id: event.to_account_id,
       amount: event.amount,
       status: :rejected,
@@ -51,7 +51,7 @@ defmodule Accounts.Handlers.Projectors.ReservationsProjector do
       multi,
       :reservation,
       from(r in Reservation,
-        where: r.account_id == ^event.account_id and r.correlation_id == ^event.correlation_id
+        where: r.account_id == ^event.account_id and r.transfer_id == ^event.transfer_id
       ),
       set: [status: status, settled_at: metadata.created_at]
     )

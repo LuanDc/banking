@@ -47,7 +47,7 @@ defmodule Accounts.Handlers.LedgerCommandsPublisherTest do
     event = %CreditAuthorized{
       account_id: "acc-2",
       amount: 400,
-      correlation_id: "corr-1",
+      transfer_id: "corr-1",
       from_account_id: "acc-1"
     }
 

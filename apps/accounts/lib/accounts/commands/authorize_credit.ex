@@ -4,7 +4,7 @@ defmodule Accounts.Commands.AuthorizeCredit do
   books a transfer into it.
   """
 
-  use Accounts.Command, fields: [:account_id, :amount, :correlation_id, :from_account_id]
+  use Accounts.Command, fields: [:account_id, :amount, :transfer_id, :from_account_id]
 
   validates :account_id, presence: true
 
@@ -14,6 +14,6 @@ defmodule Accounts.Commands.AuthorizeCredit do
       message: "must be a positive integer number of cents"
     ]
 
-  validates :correlation_id, presence: true
+  validates :transfer_id, presence: true
   validates :from_account_id, presence: true
 end

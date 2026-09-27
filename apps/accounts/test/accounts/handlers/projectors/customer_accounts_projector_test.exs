@@ -125,24 +125,24 @@ defmodule Accounts.Handlers.Projectors.CustomerAccountsProjectorTest do
   describe "available balance" do
     test "a posted credit raises it" do
       open_account()
-      :ok = project(%CreditPosted{account_id: "acc-1", amount: 1_000, correlation_id: "c-1"}, 2)
+      :ok = project(%CreditPosted{account_id: "acc-1", amount: 1_000, transfer_id: "c-1"}, 2)
 
       assert %CustomerAccount{available_balance: 1_000} = Repo.get(CustomerAccount, "acc-1")
     end
 
     test "a reservation holds it" do
       open_account()
-      :ok = project(%CreditPosted{account_id: "acc-1", amount: 1_000, correlation_id: "c-1"}, 2)
-      :ok = project(%BalanceReserved{account_id: "acc-1", amount: 400, correlation_id: "c-2"}, 3)
+      :ok = project(%CreditPosted{account_id: "acc-1", amount: 1_000, transfer_id: "c-1"}, 2)
+      :ok = project(%BalanceReserved{account_id: "acc-1", amount: 400, transfer_id: "c-2"}, 3)
 
       assert %CustomerAccount{available_balance: 600} = Repo.get(CustomerAccount, "acc-1")
     end
 
     test "a released reservation gives it back" do
       open_account()
-      :ok = project(%CreditPosted{account_id: "acc-1", amount: 1_000, correlation_id: "c-1"}, 2)
-      :ok = project(%BalanceReserved{account_id: "acc-1", amount: 400, correlation_id: "c-2"}, 3)
-      :ok = project(%BalanceReleased{account_id: "acc-1", amount: 400, correlation_id: "c-2"}, 4)
+      :ok = project(%CreditPosted{account_id: "acc-1", amount: 1_000, transfer_id: "c-1"}, 2)
+      :ok = project(%BalanceReserved{account_id: "acc-1", amount: 400, transfer_id: "c-2"}, 3)
+      :ok = project(%BalanceReleased{account_id: "acc-1", amount: 400, transfer_id: "c-2"}, 4)
 
       assert %CustomerAccount{available_balance: 1_000} = Repo.get(CustomerAccount, "acc-1")
     end

@@ -37,7 +37,7 @@ defmodule Accounts.Handlers.Projectors.CreditsProjector do
     credit = %{new_credit(event) | status: :posted, settled_at: metadata.created_at}
 
     Ecto.Multi.insert(multi, :credit, credit,
-      conflict_target: [:account_id, :correlation_id],
+      conflict_target: [:account_id, :transfer_id],
       on_conflict: {:replace, [:status, :settled_at]}
     )
   end
@@ -47,7 +47,7 @@ defmodule Accounts.Handlers.Projectors.CreditsProjector do
       multi,
       :credit,
       from(c in Credit,
-        where: c.account_id == ^event.account_id and c.correlation_id == ^event.correlation_id
+        where: c.account_id == ^event.account_id and c.transfer_id == ^event.transfer_id
       ),
       set: [status: :cancelled, settled_at: metadata.created_at]
     )
@@ -56,7 +56,7 @@ defmodule Accounts.Handlers.Projectors.CreditsProjector do
   defp new_credit(event) do
     %Credit{
       account_id: event.account_id,
-      correlation_id: event.correlation_id,
+      transfer_id: event.transfer_id,
       amount: event.amount
     }
   end

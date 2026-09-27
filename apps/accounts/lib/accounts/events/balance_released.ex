@@ -4,5 +4,5 @@ defmodule Accounts.Events.BalanceReleased do
   """
 
   @derive Jason.Encoder
-  defstruct [:account_id, :correlation_id, :amount]
+  defstruct [:account_id, :transfer_id, :amount]
 end

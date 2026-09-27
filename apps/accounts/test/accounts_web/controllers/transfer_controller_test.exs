@@ -59,7 +59,7 @@ defmodule AccountsWeb.TransferControllerTest do
       conn =
         post(conn, ~p"/api/transfers", %{from_account_id: "a", to_account_id: "b", amount: 1})
 
-      assert %{"errors" => %{"code" => "validation_failed", "fields" => %{"correlation_id" => _}}} =
+      assert %{"errors" => %{"code" => "validation_failed", "fields" => %{"transfer_id" => _}}} =
                assert_response_schema(conn, 422)
     end
   end
@@ -68,7 +68,7 @@ defmodule AccountsWeb.TransferControllerTest do
     test "returns the transfer as it stands", %{conn: conn} do
       reservation = insert(:reservation, to_account_id: Ecto.UUID.generate())
 
-      conn = get(conn, ~p"/api/transfers/#{reservation.correlation_id}")
+      conn = get(conn, ~p"/api/transfers/#{reservation.transfer_id}")
 
       assert %{"status" => "pending"} = assert_response_schema(conn, 200)
     end
@@ -125,7 +125,7 @@ defmodule AccountsWeb.TransferControllerTest do
         credit = %PostCredit{
           account_id: id,
           amount: balance,
-          correlation_id: Ecto.UUID.generate()
+          transfer_id: Ecto.UUID.generate()
         }
 
         :ok = App.dispatch(credit)

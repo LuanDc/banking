@@ -21,8 +21,8 @@ defmodule Accounts.Messaging.LedgerEventsInboxTest do
       assert LedgerEventsInbox.to_commands(message) ==
                {:ok,
                 [
-                  %ConfirmReservation{account_id: "acc-1", correlation_id: "corr-1"},
-                  %PostCredit{account_id: "acc-2", amount: 400, correlation_id: "corr-1"}
+                  %ConfirmReservation{account_id: "acc-1", transfer_id: "corr-1"},
+                  %PostCredit{account_id: "acc-2", amount: 400, transfer_id: "corr-1"}
                 ]}
     end
 
@@ -40,8 +40,8 @@ defmodule Accounts.Messaging.LedgerEventsInboxTest do
       assert LedgerEventsInbox.to_commands(message) ==
                {:ok,
                 [
-                  %ReleaseBalance{account_id: "acc-1", correlation_id: "corr-1"},
-                  %CancelCredit{account_id: "acc-2", correlation_id: "corr-1"}
+                  %ReleaseBalance{account_id: "acc-1", transfer_id: "corr-1"},
+                  %CancelCredit{account_id: "acc-2", transfer_id: "corr-1"}
                 ]}
     end
 
@@ -53,7 +53,7 @@ defmodule Accounts.Messaging.LedgerEventsInboxTest do
         ])
 
       assert LedgerEventsInbox.to_commands(message) ==
-               {:ok, [%PostCredit{account_id: "acc-2", amount: 400, correlation_id: "corr-1"}]}
+               {:ok, [%PostCredit{account_id: "acc-2", amount: 400, transfer_id: "corr-1"}]}
     end
 
     test "fails an event it does not know" do

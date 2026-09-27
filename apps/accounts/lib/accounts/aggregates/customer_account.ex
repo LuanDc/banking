@@ -114,7 +114,7 @@ defmodule Accounts.Aggregates.CustomerAccount do
   def execute(%__MODULE__{} = account, %ReserveBalance{} = command) do
     # README, D4: a reservation is decided once. A repeated command reserves nothing, whether
     # the reservation is open, settled or was rejected, even if the balance arrived since.
-    if MapSet.member?(account.decided_reservations, command.correlation_id) do
+    if MapSet.member?(account.decided_reservations, command.transfer_id) do
       []
     else
       decide_reservation(account, command)
@@ -122,35 +122,35 @@ defmodule Accounts.Aggregates.CustomerAccount do
   end
 
   # README, D4: a redelivered confirmation for a settled reservation does nothing.
-  def execute(%__MODULE__{reservations: reservations}, %ConfirmReservation{correlation_id: id})
+  def execute(%__MODULE__{reservations: reservations}, %ConfirmReservation{transfer_id: id})
       when not is_map_key(reservations, id),
       do: []
 
   def execute(%__MODULE__{} = account, %ConfirmReservation{} = command) do
     %ReservationConfirmed{
       account_id: command.account_id,
-      correlation_id: command.correlation_id,
-      amount: Map.fetch!(account.reservations, command.correlation_id)
+      transfer_id: command.transfer_id,
+      amount: Map.fetch!(account.reservations, command.transfer_id)
     }
   end
 
   # README, D4: a redelivered release for a closed reservation gives nothing back twice.
-  def execute(%__MODULE__{reservations: reservations}, %ReleaseBalance{correlation_id: id})
+  def execute(%__MODULE__{reservations: reservations}, %ReleaseBalance{transfer_id: id})
       when not is_map_key(reservations, id),
       do: []
 
   def execute(%__MODULE__{} = account, %ReleaseBalance{} = command) do
     %BalanceReleased{
       account_id: command.account_id,
-      correlation_id: command.correlation_id,
-      amount: Map.fetch!(account.reservations, command.correlation_id)
+      transfer_id: command.transfer_id,
+      amount: Map.fetch!(account.reservations, command.transfer_id)
     }
   end
 
   def execute(%__MODULE__{} = account, %AuthorizeCredit{} = command) do
     # README, D4: a credit is decided once. A repeated command authorizes nothing, whether the
     # credit is pending, settled or was rejected, even if the status changed since.
-    if MapSet.member?(account.decided_credits, command.correlation_id) do
+    if MapSet.member?(account.decided_credits, command.transfer_id) do
       []
     else
       decide_credit(account, command)
@@ -164,27 +164,27 @@ defmodule Accounts.Aggregates.CustomerAccount do
 
   def execute(%__MODULE__{} = account, %PostCredit{} = command) do
     # README, D4: a redelivered credit is posted only once.
-    if MapSet.member?(account.posted_credits, command.correlation_id) do
+    if MapSet.member?(account.posted_credits, command.transfer_id) do
       []
     else
       %CreditPosted{
         account_id: command.account_id,
         amount: command.amount,
-        correlation_id: command.correlation_id
+        transfer_id: command.transfer_id
       }
     end
   end
 
   # README, D4: a redelivered cancellation for a settled credit does nothing.
-  def execute(%__MODULE__{pending_credits: pending}, %CancelCredit{correlation_id: id})
+  def execute(%__MODULE__{pending_credits: pending}, %CancelCredit{transfer_id: id})
       when not is_map_key(pending, id),
       do: []
 
   def execute(%__MODULE__{} = account, %CancelCredit{} = command) do
     %CreditCancelled{
       account_id: command.account_id,
-      correlation_id: command.correlation_id,
-      amount: Map.fetch!(account.pending_credits, command.correlation_id)
+      transfer_id: command.transfer_id,
+      amount: Map.fetch!(account.pending_credits, command.transfer_id)
     }
   end
 
@@ -201,37 +201,37 @@ defmodule Accounts.Aggregates.CustomerAccount do
     %__MODULE__{
       account
       | available_balance: account.available_balance - event.amount,
-        reservations: Map.put(account.reservations, event.correlation_id, event.amount),
-        decided_reservations: MapSet.put(account.decided_reservations, event.correlation_id)
+        reservations: Map.put(account.reservations, event.transfer_id, event.amount),
+        decided_reservations: MapSet.put(account.decided_reservations, event.transfer_id)
     }
   end
 
   def apply(%__MODULE__{} = account, %BalanceReservationRejected{} = event) do
     %__MODULE__{
       account
-      | decided_reservations: MapSet.put(account.decided_reservations, event.correlation_id)
+      | decided_reservations: MapSet.put(account.decided_reservations, event.transfer_id)
     }
   end
 
   def apply(%__MODULE__{} = account, %CreditAuthorized{} = event) do
     %__MODULE__{
       account
-      | pending_credits: Map.put(account.pending_credits, event.correlation_id, event.amount),
-        decided_credits: MapSet.put(account.decided_credits, event.correlation_id)
+      | pending_credits: Map.put(account.pending_credits, event.transfer_id, event.amount),
+        decided_credits: MapSet.put(account.decided_credits, event.transfer_id)
     }
   end
 
   def apply(%__MODULE__{} = account, %CreditRejected{} = event) do
     %__MODULE__{
       account
-      | decided_credits: MapSet.put(account.decided_credits, event.correlation_id)
+      | decided_credits: MapSet.put(account.decided_credits, event.transfer_id)
     }
   end
 
   def apply(%__MODULE__{} = account, %CreditCancelled{} = event) do
     %__MODULE__{
       account
-      | pending_credits: Map.delete(account.pending_credits, event.correlation_id)
+      | pending_credits: Map.delete(account.pending_credits, event.transfer_id)
     }
   end
 
@@ -239,20 +239,20 @@ defmodule Accounts.Aggregates.CustomerAccount do
     %__MODULE__{
       account
       | available_balance: account.available_balance + event.amount,
-        pending_credits: Map.delete(account.pending_credits, event.correlation_id),
-        posted_credits: MapSet.put(account.posted_credits, event.correlation_id)
+        pending_credits: Map.delete(account.pending_credits, event.transfer_id),
+        posted_credits: MapSet.put(account.posted_credits, event.transfer_id)
     }
   end
 
   def apply(%__MODULE__{} = account, %ReservationConfirmed{} = event) do
-    %__MODULE__{account | reservations: Map.delete(account.reservations, event.correlation_id)}
+    %__MODULE__{account | reservations: Map.delete(account.reservations, event.transfer_id)}
   end
 
   def apply(%__MODULE__{} = account, %BalanceReleased{} = event) do
     %__MODULE__{
       account
       | available_balance: account.available_balance + event.amount,
-        reservations: Map.delete(account.reservations, event.correlation_id)
+        reservations: Map.delete(account.reservations, event.transfer_id)
     }
   end
 
@@ -271,7 +271,7 @@ defmodule Accounts.Aggregates.CustomerAccount do
         %BalanceReserved{
           account_id: command.account_id,
           amount: command.amount,
-          correlation_id: command.correlation_id,
+          transfer_id: command.transfer_id,
           to_account_id: command.to_account_id
         }
 
@@ -279,7 +279,7 @@ defmodule Accounts.Aggregates.CustomerAccount do
         %BalanceReservationRejected{
           account_id: command.account_id,
           amount: command.amount,
-          correlation_id: command.correlation_id,
+          transfer_id: command.transfer_id,
           reason: reason,
           to_account_id: command.to_account_id
         }
@@ -311,7 +311,7 @@ defmodule Accounts.Aggregates.CustomerAccount do
         %CreditAuthorized{
           account_id: command.account_id,
           amount: command.amount,
-          correlation_id: command.correlation_id,
+          transfer_id: command.transfer_id,
           from_account_id: command.from_account_id
         }
 
@@ -319,7 +319,7 @@ defmodule Accounts.Aggregates.CustomerAccount do
         %CreditRejected{
           account_id: command.account_id,
           amount: command.amount,
-          correlation_id: command.correlation_id,
+          transfer_id: command.transfer_id,
           reason: reason,
           from_account_id: command.from_account_id
         }

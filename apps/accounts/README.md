@@ -214,7 +214,7 @@ stateDiagram-v2
 | `closed` | ❌ | ❌ |
 
 **State it keeps:** `status`, `available_balance`, open `reservations` and `pending_credits`,
-plus every `correlation_id` already decided or posted, so a redelivered message changes nothing
+plus every `transfer_id` already decided or posted, so a redelivered message changes nothing
 (D4).
 
 **Its business rules:**
@@ -230,7 +230,7 @@ plus every `correlation_id` already decided or posted, so a redelivered message 
 
 ♻️ **Lifespan:** the account's process leaves memory after 5 minutes without a command, longer
 than the gap between a transfer's steps. The next command rebuilds it from its stream, which
-grows with every transfer. The `correlation_id` sets above grow with it and stay in memory while
+grows with every transfer. The `transfer_id` sets above grow with it and stay in memory while
 the process lives.
 
 ## Commands
@@ -248,12 +248,12 @@ dispatch.
 | `FreezeCustomerAccount` | `account_id`, `reason` | both present | 🌐 API |
 | `UnfreezeCustomerAccount` | `account_id` | present | 🌐 API |
 | `CloseCustomerAccount` | `account_id` | present | 🌐 API |
-| `ReserveBalance` | `account_id`, `amount`, `correlation_id`, `to_account_id` | positive cents, destination ≠ source | 🌐 API (transfer) |
-| `AuthorizeCredit` | `account_id`, `amount`, `correlation_id`, `from_account_id` | positive cents | 🟪 saga · 🌐 API (deposit) |
-| `ConfirmReservation` | `account_id`, `correlation_id` | present | 🐇 Ledger booked |
-| `ReleaseBalance` | `account_id`, `correlation_id` | present | 🟪 saga · 🐇 Ledger rejected |
-| `PostCredit` | `account_id`, `amount`, `correlation_id` | positive cents | 🐇 Ledger booked |
-| `CancelCredit` | `account_id`, `correlation_id` | present | 🐇 Ledger rejected |
+| `ReserveBalance` | `account_id`, `amount`, `transfer_id`, `to_account_id` | positive cents, destination ≠ source | 🌐 API (transfer) |
+| `AuthorizeCredit` | `account_id`, `amount`, `transfer_id`, `from_account_id` | positive cents | 🟪 saga · 🌐 API (deposit) |
+| `ConfirmReservation` | `account_id`, `transfer_id` | present | 🐇 Ledger booked |
+| `ReleaseBalance` | `account_id`, `transfer_id` | present | 🟪 saga · 🐇 Ledger rejected |
+| `PostCredit` | `account_id`, `amount`, `transfer_id` | positive cents | 🐇 Ledger booked |
+| `CancelCredit` | `account_id`, `transfer_id` | present | 🐇 Ledger rejected |
 
 ## Events
 
@@ -269,14 +269,14 @@ not from the payload.
 | 🔁 | `CustomerAccountFrozen` | `account_id`, `reason` | frozen |
 | 🔁 | `CustomerAccountUnfrozen` | `account_id` | unfrozen |
 | 🔁 | `CustomerAccountClosed` | `account_id` | closed, empty |
-| 💸 | `BalanceReserved` | `account_id`, `amount`, `correlation_id`, `to_account_id` | a transfer holds the money |
+| 💸 | `BalanceReserved` | `account_id`, `amount`, `transfer_id`, `to_account_id` | a transfer holds the money |
 | ❌ | `BalanceReservationRejected` | … + `reason` | not active or not enough balance |
-| ✅ | `ReservationConfirmed` | `account_id`, `correlation_id`, `amount` | the Ledger booked the batch |
-| ↩️ | `BalanceReleased` | `account_id`, `correlation_id`, `amount` | compensation: the money is back |
-| 📥 | `CreditAuthorized` | `account_id`, `amount`, `correlation_id`, `from_account_id` | the destination accepts the credit |
+| ✅ | `ReservationConfirmed` | `account_id`, `transfer_id`, `amount` | the Ledger booked the batch |
+| ↩️ | `BalanceReleased` | `account_id`, `transfer_id`, `amount` | compensation: the money is back |
+| 📥 | `CreditAuthorized` | `account_id`, `amount`, `transfer_id`, `from_account_id` | the destination accepts the credit |
 | ❌ | `CreditRejected` | … + `reason` | the destination can't receive |
-| ✅ | `CreditPosted` | `account_id`, `amount`, `correlation_id` | the Ledger booked it, balance goes up |
-| ↩️ | `CreditCancelled` | `account_id`, `correlation_id`, `amount` | the Ledger rejected the batch |
+| ✅ | `CreditPosted` | `account_id`, `amount`, `transfer_id` | the Ledger booked it, balance goes up |
+| ↩️ | `CreditCancelled` | `account_id`, `transfer_id`, `amount` | the Ledger rejected the batch |
 
 ### 🟪 Who reacts to them
 
@@ -322,7 +322,7 @@ erDiagram
     reservations {
         bigserial id PK
         text account_id
-        text correlation_id "unique per account"
+        text transfer_id "unique per account"
         text to_account_id
         bigint amount
         text status "open, confirmed, released, rejected"
@@ -333,7 +333,7 @@ erDiagram
     credits {
         bigserial id PK
         text account_id
-        text correlation_id "unique per account"
+        text transfer_id "unique per account"
         bigint amount
         text status "authorized, posted, cancelled, rejected"
         text reason
@@ -368,7 +368,7 @@ flowchart LR
 | `accounts.ledger-events` | 🏦 accounts | ⬅️ in | this service's subscription to `ledger.batch.*` |
 | `accounts.ledger-events.dead` | 🏦 accounts | 💀 | messages that failed, to inspect and replay |
 
-Delivery is at least once, so every consumer deduplicates by `correlation_id` (D4). Publishing
+Delivery is at least once, so every consumer deduplicates by `transfer_id` (D4). Publishing
 uses publisher confirms plus `mandatory`, so a message is never lost silently (D10).
 
 ## Tests and quality

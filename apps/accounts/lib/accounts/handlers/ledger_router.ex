@@ -3,14 +3,14 @@ defmodule Accounts.Handlers.LedgerRouter do
   The transfer saga of README section 5, as a policy on the event store.
 
   Each event carries the other account of its transfer, so the saga needs no state of its own
-  per `correlation_id`: every step follows from the event alone.
+  per `transfer_id`: every step follows from the event alone.
 
     * `BalanceReserved` asks the destination to authorize the credit (README, D5).
     * `CreditRejected` releases the source's reservation.
     * `CreditAuthorized` is booked in the Ledger by `LedgerCommandsPublisher`, the outbox, and
       the Ledger's answer comes back through RabbitMQ (D3).
 
-  The commands are idempotent by `correlation_id` (D4), so an event handled twice is harmless.
+  The commands are idempotent by `transfer_id` (D4), so an event handled twice is harmless.
   """
 
   use Commanded.Event.Handler,
@@ -43,7 +43,7 @@ defmodule Accounts.Handlers.LedgerRouter do
   # A reservation recorded before reservations named their destination: no saga can finish it,
   # so it is released rather than holding the balance forever (README, D6).
   def commands_for(%BalanceReserved{to_account_id: nil} = event) do
-    [%ReleaseBalance{account_id: event.account_id, correlation_id: event.correlation_id}]
+    [%ReleaseBalance{account_id: event.account_id, transfer_id: event.transfer_id}]
   end
 
   def commands_for(%BalanceReserved{} = event) do
@@ -51,7 +51,7 @@ defmodule Accounts.Handlers.LedgerRouter do
       %AuthorizeCredit{
         account_id: event.to_account_id,
         amount: event.amount,
-        correlation_id: event.correlation_id,
+        transfer_id: event.transfer_id,
         from_account_id: event.account_id
       }
     ]
@@ -63,7 +63,7 @@ defmodule Accounts.Handlers.LedgerRouter do
     if event.from_account_id == nil or BankAccounts.bank_account?(event.from_account_id) do
       []
     else
-      [%ReleaseBalance{account_id: event.from_account_id, correlation_id: event.correlation_id}]
+      [%ReleaseBalance{account_id: event.from_account_id, transfer_id: event.transfer_id}]
     end
   end
 

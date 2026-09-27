@@ -15,7 +15,7 @@ defmodule Accounts.Handlers.LedgerRouterTest do
       event = %BalanceReserved{
         account_id: "acc-1",
         amount: 400,
-        correlation_id: "corr-1",
+        transfer_id: "corr-1",
         to_account_id: "acc-2"
       }
 
@@ -23,7 +23,7 @@ defmodule Accounts.Handlers.LedgerRouterTest do
                %AuthorizeCredit{
                  account_id: "acc-2",
                  amount: 400,
-                 correlation_id: "corr-1",
+                 transfer_id: "corr-1",
                  from_account_id: "acc-1"
                }
              ]
@@ -33,13 +33,13 @@ defmodule Accounts.Handlers.LedgerRouterTest do
       event = %CreditRejected{
         account_id: "acc-2",
         amount: 400,
-        correlation_id: "corr-1",
+        transfer_id: "corr-1",
         reason: :credit_not_allowed,
         from_account_id: "acc-1"
       }
 
       assert LedgerRouter.commands_for(event) == [
-               %ReleaseBalance{account_id: "acc-1", correlation_id: "corr-1"}
+               %ReleaseBalance{account_id: "acc-1", transfer_id: "corr-1"}
              ]
     end
 
@@ -47,7 +47,7 @@ defmodule Accounts.Handlers.LedgerRouterTest do
       event = %CreditRejected{
         account_id: "acc-2",
         amount: 400,
-        correlation_id: "corr-1",
+        transfer_id: "corr-1",
         reason: :credit_not_allowed,
         from_account_id: BankAccounts.pix_settlement()
       }
@@ -57,10 +57,10 @@ defmodule Accounts.Handlers.LedgerRouterTest do
 
     test "releases a reservation that names no destination, which no saga can finish (D6)" do
       # Recorded before reservations carried their destination.
-      event = %BalanceReserved{account_id: "acc-1", amount: 400, correlation_id: "corr-1"}
+      event = %BalanceReserved{account_id: "acc-1", amount: 400, transfer_id: "corr-1"}
 
       assert LedgerRouter.commands_for(event) == [
-               %ReleaseBalance{account_id: "acc-1", correlation_id: "corr-1"}
+               %ReleaseBalance{account_id: "acc-1", transfer_id: "corr-1"}
              ]
     end
 
@@ -68,7 +68,7 @@ defmodule Accounts.Handlers.LedgerRouterTest do
       # Recorded before credits carried their source.
       event = %CreditRejected{
         account_id: "acc-2",
-        correlation_id: "corr-1",
+        transfer_id: "corr-1",
         reason: :invalid_amount
       }
 
