@@ -1,0 +1,52 @@
+# Resource limits for load tests: the prod stack squeezed into a small, cheap cloud footprint.
+# An override of the root file, so the services run as the same prod releases:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.load.yml up -d --build --wait ledger accounts
+#
+# Two scenarios, picked by environment variables (defaults are the base one):
+#
+#   base     1 CPU  / 512m per service   (no variables)
+#   scaled   2 CPUs / 768m per service   BEAM_CPUS=2.0 BEAM_MEMORY=768m
+#
+# The limits are CFS quotas (`cpus`), like Fargate, Cloud Run or Kubernetes, not pinned cores.
+# Keep them whole numbers: the BEAM sets its online schedulers from the quota, and a fractional
+# quota leaves more busy threads than CPU time, so they get throttled together at the end of each
+# 100 ms period. With the four containers at the base scenario's 4 CPUs, the rest of the host is
+# left to the load generator; if it starves, it becomes the bottleneck being measured.
+#
+# memswap_limit equals mem_limit: no swap, as in the cloud, so running out of memory is an OOM
+# kill instead of a slowdown that hides it. swagger-ui is left out: start only ledger and accounts,
+# and depends_on brings up Postgres and RabbitMQ.
+
+name: banking
+
+x-beam: &beam
+  cpus: ${BEAM_CPUS:-1.0}
+  mem_limit: ${BEAM_MEMORY:-512m}
+  memswap_limit: ${BEAM_MEMORY:-512m}
+  environment:
+    # No busy waiting before a scheduler sleeps: the spinning would be paid out of the quota.
+    ERL_FLAGS: "+sbwt none +sbwtdcpu none +sbwtdio none"
+
+services:
+  ledger: *beam
+  accounts: *beam
+
+  # Like a db.t4g.micro. Both services' event stores write here, so it is the likely bottleneck.
+  # The four connection pools of 10 fit in the default max_connections of 100.
+  postgres:
+    cpus: 1.0
+    mem_limit: 1g
+    memswap_limit: 1g
+    command: >-
+      postgres
+      -c shared_buffers=256MB
+      -c effective_cache_size=768MB
+      -c work_mem=4MB
+
+  # RabbitMQ reads the container's memory limit: past its high watermark (0.6 of it) it blocks
+  # publishers, which shows as "blocked" connections in the management UI.
+  rabbitmq:
+    cpus: 1.0
+    mem_limit: 512m
+    memswap_limit: 512m

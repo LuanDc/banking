@@ -236,6 +236,41 @@ docker compose -f docker-compose.yml -f .devcontainer/compose.yaml up -d --wait 
 
 To run only the prod stack, with no workspace, `docker compose up -d --build --wait` is enough.
 
+### Limit resources for a load test
+
+[`docker-compose.load.yml`](docker-compose.load.yml) squeezes the prod stack into a small cloud
+footprint. It adds CPU quotas and memory limits with no swap, and leaves Swagger UI out:
+
+```bash
+# 📉 Base: 1 CPU per service
+docker compose -f docker-compose.yml -f docker-compose.load.yml up -d --build --wait ledger accounts
+
+# 📈 Scaled: 2 CPUs per service, to see whether throughput follows
+BEAM_CPUS=2.0 BEAM_MEMORY=768m \
+  docker compose -f docker-compose.yml -f docker-compose.load.yml up -d --build --wait ledger accounts
+```
+
+| Container | 📉 Base | 📈 Scaled | Cloud look-alike |
+| --- | --- | --- | --- |
+| ledger | 1 CPU · 512 MiB | 2 CPUs · 768 MiB | a small Fargate task |
+| accounts | 1 CPU · 512 MiB | 2 CPUs · 768 MiB | a small Fargate task |
+| postgres | 1 CPU · 1 GiB | same | `db.t4g.micro` |
+| rabbitmq | 1 CPU · 512 MiB | same | a micro broker |
+| **Total** | **4 CPUs · 2.5 GiB** | **6 CPUs · 3 GiB** | |
+
+- ⚖️ **Whole CPUs only.** A limit is a CFS quota, not a pinned core. The BEAM runs one scheduler
+  per CPU of quota. With a fraction, its threads use up the quota early and are frozen together
+  until the next 100 ms period.
+- 🎯 **Leave room for the load generator.** Whatever the stack doesn't take is left to the load
+  generator. If the generator runs out of CPU, it becomes the bottleneck you measure. The scaled
+  scenario leaves 2 CPUs on an 8-CPU Docker host.
+- 🔎 **While it runs**, watch `docker stats`, then check `nr_throttled` in each container's
+  `/sys/fs/cgroup/cpu.stat`: the one that climbs hit its quota first. The RabbitMQ UI shows
+  queues backing up and blocked publishers.
+- ↩️ **Back to normal:** `docker compose up -d --wait ledger accounts` recreates the services
+  without the limits. `postgres` and `rabbitmq` keep theirs until you recreate them too, for
+  example with `docker compose up -d --wait`.
+
 ### Stop, reset, troubleshoot
 
 | Situation | Do |
@@ -261,6 +296,7 @@ guide shows how to run just the infrastructure in Docker.
 │   └── e2e/                 # story tests across both running services
 ├── .devcontainer/           # dev image, dev-mode services and the workspace container for VS Code
 ├── docker-compose.yml       # the whole stack: Postgres, RabbitMQ, Swagger UI, both services (prod)
+├── docker-compose.load.yml  # resource limits on top of it, for load tests
 └── CLAUDE.md                # conventions for AI-assisted work on the repo
 ```
 
