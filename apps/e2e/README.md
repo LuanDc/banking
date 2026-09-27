@@ -239,7 +239,8 @@ BEAM_CPUS=2.0 BEAM_MEMORY=768m \
 docker compose up -d --wait
 ```
 
-Postgres (1 CPU · 1 GiB) and RabbitMQ (1 CPU · 512 MiB) get their limits in both scenarios. The
+Postgres (2 CPUs, or `PG_CPUS` · 1 GiB) and RabbitMQ (1 CPU · 512 MiB) get their limits in both
+scenarios. The
 [root README](../../README.md#limit-resources-for-a-load-test) explains how they were picked.
 
 The task also runs on its own: `cd apps/e2e && mix e2e.load`.

@@ -259,7 +259,7 @@ footprint. It adds CPU quotas and memory limits with no swap, and leaves Swagger
 the stack with it before `scripts/load.sh`:
 
 ```bash
-# 📉 Base: 1 CPU per service
+# 📉 Base: 1 CPU per service, 2 for Postgres
 docker compose -f docker-compose.yml -f docker-compose.load.yml up -d --build --wait ledger accounts
 
 # 📈 Scaled: 2 CPUs per service, to see whether throughput follows
@@ -271,16 +271,16 @@ BEAM_CPUS=2.0 BEAM_MEMORY=768m \
 | --- | --- | --- | --- |
 | ledger | 1 CPU · 512 MiB | 2 CPUs · 768 MiB | a small Fargate task |
 | accounts | 1 CPU · 512 MiB | 2 CPUs · 768 MiB | a small Fargate task |
-| postgres | 1 CPU · 1 GiB | same | `db.t4g.micro` |
+| postgres | 2 CPUs · 1 GiB | same (`PG_CPUS` for more) | `db.t4g.medium` |
 | rabbitmq | 1 CPU · 512 MiB | same | a micro broker |
-| **Total** | **4 CPUs · 2.5 GiB** | **6 CPUs · 3 GiB** | |
+| **Total** | **5 CPUs · 2.5 GiB** | **7 CPUs · 3 GiB** | |
 
 - ⚖️ **Whole CPUs only.** A limit is a CFS quota, not a pinned core. The BEAM runs one scheduler
   per CPU of quota. With a fraction, its threads use up the quota early and are frozen together
   until the next 100 ms period.
 - 🎯 **Leave room for the load generator.** Whatever the stack doesn't take is left to the load
   generator. If the generator runs out of CPU, it becomes the bottleneck you measure. The scaled
-  scenario leaves 2 CPUs on an 8-CPU Docker host.
+  scenario leaves 1 CPU on an 8-CPU Docker host.
 - 🔎 **While it runs**, watch `docker stats`, then check `nr_throttled` in each container's
   `/sys/fs/cgroup/cpu.stat`: the one that climbs hit its quota first. The RabbitMQ UI shows
   queues backing up and blocked publishers.
@@ -306,7 +306,7 @@ guide shows how to run just the infrastructure in Docker.
 
 ```
 .
-├── docs/event_storming.md   # the design: event storming, context map, decisions D1…D17
+├── docs/event_storming.md   # the design: event storming, context map, decisions D1…D18
 ├── apps/
 │   ├── accounts/            # Account Management Context (Phoenix service)
 │   ├── ledger/              # Ledger Context (Phoenix service)
