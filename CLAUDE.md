@@ -81,15 +81,22 @@ All docs are in English, written for developers who find the repo on GitHub.
 ## Local setup
 
 Only Docker is required. `docker compose up -d --wait` starts Postgres, RabbitMQ (management UI
-on :15672, user and password `banking`), Swagger UI (:8080) and both services from the mounted
-source with the dev image (`.devcontainer/Dockerfile`): ledger on :4001, then accounts
-on :4000. Each runs `mix setup` on start. Their `deps` and `_build` live in named volumes, never
-in the host's directories.
+on :15672, user and password `banking`), Swagger UI (:8080) and both services in prod mode:
+ledger on :4001, then accounts on :4000.
+
+- Each service's image is a `mix release` built by `apps/<service>/Dockerfile`. After a code
+  change, `docker compose up -d --build --wait` rebuilds it before the e2e stories run.
+- `bin/setup` (`<App>.Release.setup/0`, the release's `mix setup`) runs on every start and
+  creates the `*_prod` databases. A new setup step goes in both the `mix setup` alias and the
+  `Release` module.
+- `config/prod.exs` has no `force_ssl`: the stack serves plain HTTP.
 
 - `.devcontainer/` adds a `workspace` container (VS Code's **Reopen in Container**, or
   `docker compose -f docker-compose.yml -f .devcontainer/compose.yaml exec workspace bash`) for
-  `mix test`, `mix quality`, the e2e stories and Newman. Inside it, use the `devcontainer`
-  Postman environment instead of `local`.
+  `mix test`, `mix quality`, the e2e stories and Newman, with the dev image
+  (`.devcontainer/Dockerfile`). Each app's `deps` and `_build` live in its named volumes, never
+  in the host's directories. Inside it, use the `devcontainer` Postman environment instead of
+  `local`.
 - The dev and test configs read `PGHOST`, `RABBITMQ_URL` and (dev) `PHX_IP`; the defaults are
   the host's `localhost`, so running a service on the host still works: start only
   `postgres rabbitmq swagger-ui`, and stop the Docker service on the same port first.

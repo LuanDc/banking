@@ -10,7 +10,7 @@ no other context: it takes commands and publishes its own events.
 | --- | --- |
 | 🌐 HTTP (read-only) | http://localhost:4001/api |
 | 📖 Swagger | [⬇️ `priv/openapi.yaml`](priv/openapi.yaml?raw=true) · http://localhost:8080 |
-| 🗄️ Databases | `ledger_eventstore_dev` (events) · `ledger_dev` (read models) |
+| 🗄️ Databases | `ledger_eventstore_dev` (events) · `ledger_dev` (read models) · `_prod` in Docker |
 | 🐇 Talks to | whoever sends to `ledger.commands` and listens on `ledger.events` |
 
 **Contents:** [How it works](#how-it-works) · [Tech stack](#tech-stack) · [Run in dev](#run-in-dev) ·
@@ -61,13 +61,19 @@ flowchart LR
 ### 🐳 With Docker only
 
 ```bash
-# From the repo root: infrastructure plus both services, each one running `mix setup` first
+# From the repo root: infrastructure plus both services, each one a release image
 docker compose up -d --wait
 docker compose logs -f ledger
+
+# After a code change: rebuild the image and restart
+docker compose up -d --build --wait ledger
 ```
 
-The service runs from the mounted source, so an edit reloads on the next request. Its
-`mix setup` runs on every start. It is idempotent, seeds included.
+The container runs the service in production mode: [`Dockerfile`](Dockerfile) builds a `mix
+release` (no Elixir or source code in the final image), and `Ledger.Release`
+([`lib/ledger/release.ex`](lib/ledger/release.ex)) does what Mix would. Its `bin/setup`, the
+release's `mix setup`, runs on every start. It is idempotent, seeds included. It uses the
+`ledger_prod` and `ledger_eventstore_prod` databases.
 
 For `mix test`, `mix quality` and an `iex` shell, open the repo in the dev container (VS Code:
 **Reopen in Container**) and run them from `apps/ledger`. Postgres and RabbitMQ are reached by

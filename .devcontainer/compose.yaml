@@ -1,7 +1,9 @@
 # Added on top of the root docker-compose.yml by devcontainer.json: the container the editor
-# attaches to. It shares each app's deps and _build volumes with the running services, and
-# reaches them, Postgres and RabbitMQ by their service names. The dialyzer PLTs (`mix quality`)
-# live under _build, so the container's never clash with the host's.
+# attaches to, with the dev image (Dockerfile next to this file). The running services are
+# release images of their own, so each app's deps and _build live in this container's named
+# volumes, never in the host's directories. It reaches the services, Postgres and RabbitMQ by
+# their service names. The dialyzer PLTs (`mix quality`) live under _build, so the container's
+# never clash with the host's.
 #
 # Without VS Code, the same container runs with Docker alone:
 #
@@ -36,5 +38,9 @@ services:
       - rabbitmq
 
 volumes:
+  accounts-deps:
+  accounts-build:
+  ledger-deps:
+  ledger-build:
   e2e-deps:
   e2e-build:

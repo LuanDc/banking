@@ -1,8 +1,9 @@
 import Config
 
-# Force HTTPS (with HSTS). TLS is expected to be terminated at the
-# load balancer, which must set the `x-forwarded-proto` header.
-config :accounts, AccountsWeb.Endpoint, force_ssl: [rewrite_on: [:x_forwarded_proto], hsts: true]
+# No force_ssl: the release serves plain HTTP inside the Docker stack (docker-compose.yml), which
+# has no TLS. Behind a load balancer that terminates TLS, turn it on here (it is compile-time):
+#
+#     config :accounts, AccountsWeb.Endpoint, force_ssl: [rewrite_on: [:x_forwarded_proto], hsts: true]
 
 # Do not print debug messages in production
 config :logger, level: :info

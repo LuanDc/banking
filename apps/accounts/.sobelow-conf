@@ -1,7 +1,8 @@
 [
   exit: "low",
   format: "txt",
-  ignore: [],
+  # The release serves plain HTTP inside the Docker stack, which has no TLS (config/prod.exs).
+  ignore: ["Config.HTTPS"],
   ignore_files: [],
   out: nil,
   private: false,

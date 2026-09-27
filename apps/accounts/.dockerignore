@@ -1,0 +1,13 @@
+# Keeps the build context (this directory) to what the Dockerfile copies: the image fetches and
+# compiles its own deps, and the host's _build and deps never get in.
+.dockerignore
+Dockerfile
+/_build/
+/deps/
+/cover/
+/doc/
+/test/
+/tmp/
+.elixir_ls
+*.ez
+erl_crash.dump

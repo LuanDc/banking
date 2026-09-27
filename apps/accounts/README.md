@@ -9,7 +9,7 @@ its available balance, and the transfer saga. The actual money book is the [📒
 | --- | --- |
 | 🌐 HTTP | http://localhost:4000/api |
 | 📖 Swagger | [⬇️ `priv/openapi.yaml`](priv/openapi.yaml?raw=true) · http://localhost:8080 |
-| 🗄️ Databases | `accounts_eventstore_dev` (events) · `accounts_dev` (read models) |
+| 🗄️ Databases | `accounts_eventstore_dev` (events) · `accounts_dev` (read models) · `_prod` in Docker |
 | 🐇 Talks to | `ledger` through RabbitMQ only |
 
 **Contents:** [How it works](#how-it-works) · [Tech stack](#tech-stack) · [Run in dev](#run-in-dev) ·
@@ -63,13 +63,19 @@ flowchart LR
 ### 🐳 With Docker only
 
 ```bash
-# From the repo root: infrastructure plus both services, each one running `mix setup` first
+# From the repo root: infrastructure plus both services, each one a release image
 docker compose up -d --wait
 docker compose logs -f accounts
+
+# After a code change: rebuild the image and restart
+docker compose up -d --build --wait accounts
 ```
 
-The service runs from the mounted source, so an edit reloads on the next request. It starts
-after the ledger is healthy, since the ledger declares the queue this service sends commands to.
+The container runs the service in production mode: [`Dockerfile`](Dockerfile) builds a `mix
+release` (no Elixir or source code in the final image), and `Accounts.Release`
+([`lib/accounts/release.ex`](lib/accounts/release.ex)) does what Mix would. It starts after the
+ledger is healthy, since the ledger declares the queue this service sends commands to. It uses
+the `accounts_prod` and `accounts_eventstore_prod` databases.
 
 For `mix test`, `mix quality` and an `iex` shell, open the repo in the dev container (VS Code:
 **Reopen in Container**) and run them from `apps/accounts`. Postgres and RabbitMQ are reached

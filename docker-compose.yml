@@ -1,9 +1,10 @@
 # The whole local stack: infrastructure plus both services. Only Docker is needed.
 #
-#   docker compose up -d      # start (the first run compiles both services: a few minutes)
+#   docker compose up -d --wait    # start (the first run builds both images: a few minutes)
+#   docker compose up -d --build   # rebuild the images after a code change
 #   docker compose logs -f accounts ledger
-#   docker compose down       # stop (data is kept in named volumes)
-#   docker compose down -v    # stop and wipe the data, deps and builds
+#   docker compose down            # stop (data is kept in named volumes)
+#   docker compose down -v         # stop and wipe the data
 #
 # To run the services on the host instead (`iex -S mix phx.server`), start only the
 # infrastructure: `docker compose up -d postgres rabbitmq swagger-ui`.
@@ -13,21 +14,20 @@
 
 name: banking
 
-# The services run from the mounted source with the dev image (.devcontainer/Dockerfile). Each app keeps its deps and
-# _build in named volumes, shared with the workspace, so they never mix with a host build.
-x-elixir: &elixir
-  build: .devcontainer
-  environment:
-    PGHOST: postgres
-    RABBITMQ_URL: amqp://banking:banking@rabbitmq:5672
-    # Bind to every interface, so the host and the other containers reach the endpoint.
-    PHX_IP: 0.0.0.0
+# The services run in production mode: each image is a `mix release` built from apps/<service>
+# by its Dockerfile. `bin/setup` (<App>.Release.setup/0) is the release's `mix setup`, idempotent,
+# so it runs on every start. The databases are the *_prod ones, next to the dev and test ones.
+x-release-env: &release-env
+  RABBITMQ_URL: amqp://banking:banking@rabbitmq:5672
+  PHX_HOST: localhost
+  # Local only, not a secret: the APIs keep no session or signed data.
+  SECRET_KEY_BASE: local-only-secret-key-base-for-the-docker-stack-not-used-in-any-real-deploy
 
 services:
   # One Postgres server for both services. Each service keeps its own databases —
   # read models and event store — so no database is shared (README, section 6):
-  # accounts_dev, accounts_eventstore_dev, ledger_dev, ledger_eventstore_dev, and
-  # their *_test counterparts, all created by `mix setup` / `mix test`.
+  # accounts_prod, accounts_eventstore_prod, ledger_prod, ledger_eventstore_prod, created by
+  # the services' `bin/setup`, plus the *_dev and *_test ones of `mix setup` / `mix test`.
   postgres:
     image: postgres:17
     environment:
@@ -67,18 +67,17 @@ services:
       timeout: 10s
       retries: 10
 
-  # `mix setup` on every start: it is idempotent, and its seeds open the bank's
-  # pix-settlement account, which deposits need (D13).
+  # Its setup runs the seeds, which open the bank's pix-settlement account; deposits need it (D13).
   ledger:
-    <<: *elixir
-    working_dir: /workspace/apps/ledger
-    command: sh -c "mix setup && exec mix phx.server"
+    build: apps/ledger
+    command: sh -c "bin/setup && exec bin/server"
+    environment:
+      <<: *release-env
+      PORT: 4001
+      DATABASE_URL: ecto://postgres:postgres@postgres/ledger_prod
+      EVENT_STORE_URL: ecto://postgres:postgres@postgres/ledger_eventstore_prod
     ports:
       - "4001:4001"
-    volumes:
-      - .:/workspace
-      - ledger-deps:/workspace/apps/ledger/deps
-      - ledger-build:/workspace/apps/ledger/_build
     depends_on:
       postgres:
         condition: service_healthy
@@ -89,22 +88,21 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-      # The first start compiles everything.
-      start_period: 10m
-      start_interval: 5s
+      start_period: 1m
+      start_interval: 2s
 
   # Starts once the ledger is healthy: the ledger declares the `ledger.commands` queue, and
   # the publisher returns a command that no queue takes (mandatory).
   accounts:
-    <<: *elixir
-    working_dir: /workspace/apps/accounts
-    command: sh -c "mix setup && exec mix phx.server"
+    build: apps/accounts
+    command: sh -c "bin/setup && exec bin/server"
+    environment:
+      <<: *release-env
+      PORT: 4000
+      DATABASE_URL: ecto://postgres:postgres@postgres/accounts_prod
+      EVENT_STORE_URL: ecto://postgres:postgres@postgres/accounts_eventstore_prod
     ports:
       - "4000:4000"
-    volumes:
-      - .:/workspace
-      - accounts-deps:/workspace/apps/accounts/deps
-      - accounts-build:/workspace/apps/accounts/_build
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,8 +115,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-      start_period: 10m
-      start_interval: 5s
+      start_period: 1m
+      start_interval: 2s
 
   # Proposed HTTP APIs of both services (OpenAPI 3.1), one spec each, picked from
   # the dropdown: http://localhost:8080. The specs are mounted, so a reload shows
@@ -139,7 +137,3 @@ services:
 volumes:
   postgres-data:
   rabbitmq-data:
-  accounts-deps:
-  accounts-build:
-  ledger-deps:
-  ledger-build:
