@@ -3,7 +3,7 @@
 Two Phoenix services built on Commanded, under `apps/`. `apps/accounts/` is the Account
 Management Context and `apps/ledger/` is the Ledger Context. They share no code and no database;
 run `mix` inside each one. `docs/event_storming.md` is the design document: sections 3–7 hold the
-model and section 10 the decisions (D1…D15). Read the relevant decision before changing its
+model and section 10 the decisions (D1…D16). Read the relevant decision before changing its
 area. Code comments cite it as "README, Dn" from before it moved.
 
 ## Documentation
@@ -22,9 +22,12 @@ All docs are in English, written for developers who find the repo on GitHub.
 
 - Develop test-first, one red → green per behavior, following the `baby-steps-tdd` skill.
 - Before every commit, run `mix test` and `mix quality` in each service you changed.
-- `apps/e2e` holds the story tests across both running services (D15). Run its `mix test`
-  against the prod stack (`docker compose up -d --build --wait`, see Local setup) before committing a change to a message, a saga step or an endpoint,
-  and add a story when a new flow crosses a boundary. Edge cases stay in the services' unit tests.
+- `apps/e2e` holds the story tests across both running services (D15). Run them against the
+  prod stack with `scripts/e2e.sh` from the host (it starts the stack, then runs `mix test` and
+  Newman) before committing a change to a message, a saga step or an endpoint, and add a story
+  when a new flow crosses a boundary. Edge cases stay in the services' unit tests.
+- The load test (`mix e2e.load`, D16) is told with the stories' steps (`E2E.Flows`). A change to
+  a step serves both. `scripts/load.sh` runs it under `docker-compose.load.yml`.
 - **The Postman collection mirrors the e2e stories** (`apps/e2e/postman/`: the collection plus
   a `local` environment).
   - The ExUnit stories are the source of truth. The collection is there for anyone who wants to

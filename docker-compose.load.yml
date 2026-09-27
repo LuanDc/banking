@@ -1,5 +1,6 @@
 # Resource limits for load tests: the prod stack squeezed into a small, cheap cloud footprint.
-# An override of the root file, so the services run as the same prod releases:
+# An override of the root file, so the services run as the same prod releases. `scripts/load.sh`
+# starts the stack with it and runs the load test; by hand:
 #
 #   docker compose -f docker-compose.yml -f docker-compose.load.yml up -d --build --wait ledger accounts
 #

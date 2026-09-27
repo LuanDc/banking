@@ -61,7 +61,7 @@ Start here to understand *why* the code looks the way it does.
 | See how the two contexts relate | [6 · Context Map](docs/event_storming.md#6-context-map) |
 | Browse every command, event and policy | [7 · Inventory](docs/event_storming.md#7-inventory-of-commands-events-and-aggregates) |
 | See the open questions and how each was settled | [8 · Hotspots](docs/event_storming.md#8-hotspots--open-decisions) |
-| Read the trade-offs (D1…D15) | [10 · Design decisions](docs/event_storming.md#10-design-decisions) |
+| Read the trade-offs (D1…D16) | [10 · Design decisions](docs/event_storming.md#10-design-decisions) |
 
 ### 🧩 The services
 
@@ -83,6 +83,7 @@ Each service has its own README with how it works inside.
 
 End-to-end tests that drive both running services through their APIs and RabbitMQ: deposits,
 transfers, compensation, closing, and redelivered messages. Each one checks that both books agree.
+The same steps drive a load test, which ends with the same check.
 
 | I want to… | Read |
 | --- | --- |
@@ -90,6 +91,7 @@ transfers, compensation, closing, and redelivered messages. Each one checks that
 | Run the suite | [Run it](apps/e2e/README.md#run-it) |
 | Browse what is covered | [Stories](apps/e2e/README.md#stories) |
 | Replay them by hand in Postman | [Replay them in Postman](apps/e2e/README.md#replay-them-in-postman) |
+| Load-test the stack and check both books after | [Load test](apps/e2e/README.md#load-test) |
 
 ## Run it locally
 
@@ -202,7 +204,7 @@ at the other containers, so the usual commands just work:
 | --- | --- |
 | 🧪 Run a service's tests | `cd apps/accounts && mix test` (or `apps/ledger`) |
 | 🔍 Run the quality checks | `mix quality` in the service's folder |
-| 🎬 Run the e2e stories | `cd apps/e2e && mix test` (against whichever mode is up) |
+| 🎬 Run the e2e stories | `scripts/e2e.sh` (or `cd apps/e2e && mix test`), against whichever mode is up |
 | 📮 Replay the Postman collection | `newman run apps/e2e/postman/banking.postman_collection.json -e apps/e2e/postman/devcontainer.postman_environment.json` |
 | 📐 Lint an OpenAPI spec | `npx @redocly/cli@1 lint apps/accounts/priv/openapi.yaml` |
 | 🐘 Open a SQL shell | `psql -U postgres -d accounts_dev` (password `postgres`; `accounts_prod` in prod mode) |
@@ -236,10 +238,21 @@ docker compose -f docker-compose.yml -f .devcontainer/compose.yaml up -d --wait 
 
 To run only the prod stack, with no workspace, `docker compose up -d --build --wait` is enough.
 
+### Run the stories and the load test
+
+Two scripts, from your machine in the repo root, start the stack they need and then run the
+tests in the workspace container, so only Docker is needed:
+
+| I want to… | Run |
+| --- | --- |
+| 🎬 Run the e2e stories and their Postman mirror on the prod stack | `scripts/e2e.sh` ([details](apps/e2e/README.md#run-it)) |
+| 📈 Load-test the prod stack under the limits below | `scripts/load.sh` or `scripts/load.sh --scaled` ([details](apps/e2e/README.md#load-test)) |
+
 ### Limit resources for a load test
 
 [`docker-compose.load.yml`](docker-compose.load.yml) squeezes the prod stack into a small cloud
-footprint. It adds CPU quotas and memory limits with no swap, and leaves Swagger UI out:
+footprint. It adds CPU quotas and memory limits with no swap, and leaves Swagger UI out.
+`scripts/load.sh` applies it for you; by hand:
 
 ```bash
 # 📉 Base: 1 CPU per service
@@ -289,11 +302,12 @@ guide shows how to run just the infrastructure in Docker.
 
 ```
 .
-├── docs/event_storming.md   # the design: event storming, context map, decisions D1…D15
+├── docs/event_storming.md   # the design: event storming, context map, decisions D1…D16
 ├── apps/
 │   ├── accounts/            # Account Management Context (Phoenix service)
 │   ├── ledger/              # Ledger Context (Phoenix service)
-│   └── e2e/                 # story tests across both running services
+│   └── e2e/                 # story tests and the load test, across both running services
+├── scripts/                 # e2e.sh and load.sh: start the stack, then run the stories or the load test
 ├── .devcontainer/           # dev image, dev-mode services and the workspace container for VS Code
 ├── docker-compose.yml       # the whole stack: Postgres, RabbitMQ, Swagger UI, both services (prod)
 ├── docker-compose.load.yml  # resource limits on top of it, for load tests
