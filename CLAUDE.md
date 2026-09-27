@@ -25,6 +25,23 @@ All docs are in English, written for developers who find the repo on GitHub.
 - `apps/e2e` holds the story tests across both running services (D15). Run its `mix test`
   (the stack must be up) before committing a change to a message, a saga step or an endpoint,
   and add a story when a new flow crosses a boundary. Edge cases stay in the services' unit tests.
+- **The Postman collection mirrors the e2e stories** (`apps/e2e/postman/`: the collection plus
+  a `local` environment).
+  - The ExUnit stories are the source of truth. The collection is there for anyone who wants to
+    replay them by hand as a double check.
+  - One folder per story, with the test's name, making the same requests and the same
+    assertions in the same order.
+  - Every change to a story (add, remove, rename, a new step or assertion) updates its folder
+    in the same commit. Never change the collection alone: change the story first, then mirror
+    it.
+  - The folders use the same mechanisms as the stories:
+    - chained variables for ids and fresh keys;
+    - a request repeated with `pm.execution.setNextRequest` until it passes, capped, in place
+      of `eventually`;
+    - the RabbitMQ management API (`POST :15672/api/exchanges/%2F/<exchange>/publish`) for
+      replayed messages.
+  - Before committing, run both against the running stack: `mix test` in `apps/e2e`, then
+    `npx newman run apps/e2e/postman/banking.postman_collection.json -e apps/e2e/postman/local.postman_environment.json`.
 - Commit on `main` directly: there is no feature branch and no remote.
 - Commit at each green step without asking first. Write the message with the
   `conventional-commits` skill.
