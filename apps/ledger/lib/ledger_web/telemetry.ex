@@ -1,6 +1,16 @@
 defmodule LedgerWeb.Telemetry do
+  @moduledoc """
+  The metrics /dashboard charts (LiveDashboard). Besides Phoenix, Ecto and the VM, it charts
+  what a load test pushes on: how busy the schedulers are, how long a query waits for a
+  connection, how far the subscriptions to the event store lag, the messages waiting in the
+  queues and the errors logged (`LedgerWeb.Telemetry.Sampler`, `LedgerWeb.Telemetry.ErrorCounter`).
+  """
+
   use Supervisor
   import Telemetry.Metrics
+
+  alias LedgerWeb.Telemetry.ErrorCounter
+  alias LedgerWeb.Telemetry.Sampler
 
   def start_link(arg) do
     Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
@@ -8,86 +18,95 @@ defmodule LedgerWeb.Telemetry do
 
   @impl true
   def init(_arg) do
-    children = [
-      # Telemetry poller will execute the given period measurements
-      # every 10_000ms. Learn more here: https://hexdocs.pm/telemetry_metrics
-      {:telemetry_poller, measurements: periodic_measurements(), period: 10_000}
-      # Add reporters as children of your supervision tree.
-      # {Telemetry.Metrics.ConsoleReporter, metrics: metrics()}
-    ]
+    ErrorCounter.attach()
+
+    children =
+      [
+        # Every second, so the dashboard follows a load test as it runs.
+        {:telemetry_poller,
+         measurements: [:memory, :total_run_queue_lengths], period: 1_000, init_delay: 1_000}
+      ] ++ sampler()
 
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  # Tests start their own.
+  defp sampler do
+    if Application.get_env(:ledger, :start_sampler, true), do: [Sampler], else: []
+  end
+
+  # LiveDashboard gives each metric name's first segment a tab: `ledger` holds what a load test
+  # pushes on (the database pool, the subscriptions' lag, the queues and the errors), `vm` the
+  # schedulers and memory.
   def metrics do
     [
       # Phoenix Metrics
-      summary("phoenix.endpoint.start.system_time",
-        unit: {:native, :millisecond}
-      ),
       summary("phoenix.endpoint.stop.duration",
-        unit: {:native, :millisecond}
-      ),
-      summary("phoenix.router_dispatch.start.system_time",
-        tags: [:route],
-        unit: {:native, :millisecond}
-      ),
-      summary("phoenix.router_dispatch.exception.duration",
-        tags: [:route],
         unit: {:native, :millisecond}
       ),
       summary("phoenix.router_dispatch.stop.duration",
         tags: [:route],
         unit: {:native, :millisecond}
       ),
-      summary("phoenix.socket_connected.duration",
-        unit: {:native, :millisecond}
-      ),
-      sum("phoenix.socket_drain.count"),
-      summary("phoenix.channel_joined.duration",
-        unit: {:native, :millisecond}
-      ),
-      summary("phoenix.channel_handled_in.duration",
-        tags: [:event],
-        unit: {:native, :millisecond}
+      counter("phoenix.router_dispatch.exception.duration",
+        tags: [:route],
+        description: "Requests that raised"
       ),
 
       # Database Metrics
-      summary("ledger.repo.query.total_time",
+      summary("ledger.repo.query.queue_time",
         unit: {:native, :millisecond},
-        description: "The sum of the other measurements"
-      ),
-      summary("ledger.repo.query.decode_time",
-        unit: {:native, :millisecond},
-        description: "The time spent decoding the data received from the database"
+        description:
+          "The time spent waiting for a database connection: it grows once the pool is too small"
       ),
       summary("ledger.repo.query.query_time",
         unit: {:native, :millisecond},
         description: "The time spent executing the query"
       ),
-      summary("ledger.repo.query.queue_time",
+      summary("ledger.repo.query.total_time",
         unit: {:native, :millisecond},
-        description: "The time spent waiting for a database connection"
+        description: "The sum of the other measurements"
       ),
-      summary("ledger.repo.query.idle_time",
+
+      # Event Store Metrics
+      last_value("ledger.subscription.lag.events",
+        tags: [:subscription],
+        description: "Events stored that the projector or the outbox has yet to handle"
+      ),
+      summary("commanded.application.dispatch.stop.duration",
         unit: {:native, :millisecond},
-        description:
-          "The time the connection spent waiting before being checked out for the query"
+        description: "From dispatching a command to its events stored"
+      ),
+      summary("commanded.event.handle.stop.duration",
+        tags: [:handler_name],
+        unit: {:native, :millisecond}
+      ),
+
+      # RabbitMQ Metrics
+      last_value("ledger.queue.messages", tags: [:queue], description: "Messages ready"),
+      last_value("ledger.queue.consumers", tags: [:queue]),
+      summary("broadway.processor.message.stop.duration",
+        unit: {:native, :millisecond},
+        description: "The time to handle one message from the commands queue"
+      ),
+
+      # Errors
+      counter("ledger.error.count",
+        tags: [:kind],
+        description: "Errors logged, by the exception or the module that logged them"
       ),
 
       # VM Metrics
-      summary("vm.memory.total", unit: {:byte, :kilobyte}),
-      summary("vm.total_run_queue_lengths.total"),
-      summary("vm.total_run_queue_lengths.cpu"),
-      summary("vm.total_run_queue_lengths.io")
-    ]
-  end
-
-  defp periodic_measurements do
-    [
-      # A module, function and arguments to be invoked periodically.
-      # This function must call :telemetry.execute/3 and a metric must be added above.
-      # {LedgerWeb, :count_users, []}
+      last_value("vm.scheduler_utilization.total",
+        description:
+          "How busy the online schedulers are, in percent (100: the CPU quota is used up)"
+      ),
+      last_value("vm.total_run_queue_lengths.total"),
+      last_value("vm.total_run_queue_lengths.cpu"),
+      last_value("vm.total_run_queue_lengths.io"),
+      last_value("vm.memory.total", unit: {:byte, :megabyte}),
+      last_value("vm.memory.processes", unit: {:byte, :megabyte}),
+      last_value("vm.memory.binary", unit: {:byte, :megabyte})
     ]
   end
 end

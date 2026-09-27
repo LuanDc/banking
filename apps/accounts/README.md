@@ -54,6 +54,7 @@ flowchart LR
 | 🟩 | [commanded_ecto_projections](https://github.com/commanded/commanded-ecto-projections) · Ecto | Read models in Postgres |
 | ✅ | [Vex](https://github.com/CargoSense/vex) · [ExConstructor](https://github.com/appcues/exconstructor) | Command input rules and building commands from params |
 | 🐇 | [AMQP](https://github.com/pma/amqp) · [Broadway RabbitMQ](https://github.com/dashbitco/broadway_rabbitmq) | Publishing commands, consuming the Ledger's events |
+| 📈 | [Phoenix LiveDashboard](https://github.com/phoenixframework/phoenix_live_dashboard) · [ecto_psql_extras](https://github.com/pawurb/ecto_psql_extras) | `/dashboard`: metrics during a load test, Postgres stats |
 | 📜 | OpenAPI 3.1 · [JSV](https://github.com/lud/jsv) | Hand-written spec and contract tests |
 | 🧪 | ExUnit · ExMachina · Mox · ExCoveralls | Tests |
 | 🔍 | Credo · Dialyxir · Sobelow · mix_audit | `mix quality` |
@@ -124,6 +125,40 @@ curl localhost:4000/api/transfers/tr-1     # pending → completed
 
 💡 Freeze B (`POST /api/accounts/$B/freeze` with `{"reason":"fraud"}`) and transfer again.
 The saga compensates and the transfer ends as `failed` with `credit_not_allowed`.
+
+## Dashboard
+
+📈 http://localhost:4000/dashboard (`banking` / `banking`), a
+[LiveDashboard](https://github.com/phoenixframework/phoenix_live_dashboard) of this node. Watch it
+during a load test ([how](../e2e/README.md#watch-it-on-the-dashboards)): the charts sample every
+second, and keep only what they gathered while the page was open.
+
+In prod, `DASHBOARD_USER` and `DASHBOARD_PASSWORD` set the credentials (`docker-compose.yml`
+sets both). Without them, `/dashboard` is not served. Scripts load only with a per-request
+nonce (Content-Security-Policy).
+
+**Metrics** tab, one sub-tab per metric prefix ([`lib/accounts_web/telemetry.ex`](lib/accounts_web/telemetry.ex)):
+
+| Tab | Chart | Shows |
+| --- | --- | --- |
+| **Accounts** | `repo.query.queue_time` | ⏳ waiting for a read-model connection: it grows once the pool is too small |
+| | `repo.query.query_time` | 🐘 how long Postgres takes |
+| | `subscription.lag.events` | 🐢 events stored that each subscription has yet to handle: the three projectors, the saga (`ledger_router`) and the outbox (`ledger_commands_publisher`) |
+| | `queue.messages` · `queue.consumers` | 🐇 messages ready in `accounts.ledger-events` and `accounts.ledger-events.dead` |
+| | `error.count` | 💥 errors logged, by exception (`DBConnection.ConnectionError`, …) or by the module that logged them |
+| **VM** | `scheduler_utilization.total` | 🔥 how busy the schedulers are, in %. The BEAM starts one per CPU of the quota, so 100 means the quota is used up |
+| | `total_run_queue_lengths` | processes waiting for a scheduler |
+| | `memory` | total, processes, binaries |
+| **Commanded** | `application.dispatch` · `event.handle` | a command until its events are stored; each handler per event |
+| **Broadway** | `processor.message` | one message from the Ledger's events queue |
+| **Phoenix** | `router_dispatch` | request time by route, and requests that raised |
+
+`AccountsWeb.Telemetry.Sampler` measures what no telemetry event reports: the schedulers, the lag
+(from the event store's `subscriptions` table) and the queues (a passive declare per queue, on
+a connection of its own). `AccountsWeb.Telemetry.ErrorCounter` is a `:logger` handler.
+
+**Ecto Stats** shows the read-model database: connections, locks, the queries running for over
+200 ms, cache hits.
 
 ## HTTP API
 

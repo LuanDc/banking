@@ -15,16 +15,20 @@
 # It pings Accounts, the Ledger and RabbitMQ first and stops if one is down. The URLs default to
 # localhost, as in apps/e2e/config/config.exs. Needs Elixir and curl. Arguments go to
 # `mix e2e.load` (see `mix help e2e.load`). The JSON report lands in apps/e2e/load-results/.
+# Watch the run on each service's /dashboard (apps/e2e/README.md, "Watch it on the dashboards").
 
 set -euo pipefail
 # shellcheck source=scripts/_common.sh
 source "$(dirname "$0")/_common.sh"
 
 case "${1:-}" in
-  -h | --help) sed -n '2,17p' "$0"; exit 0 ;;
+  -h | --help) sed -n '2,18p' "$0"; exit 0 ;;
 esac
 
 check_services
+
+printf '\n📈 Watch it on the dashboards (Metrics tab):\n   %s/dashboard/metrics\n   %s/dashboard/metrics\n' \
+  "$ACCOUNTS_URL" "$LEDGER_URL"
 
 report="load-results/$(date +%Y%m%d-%H%M%S).json"
 step "Load test: mix e2e.load"

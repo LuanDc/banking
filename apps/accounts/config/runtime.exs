@@ -75,6 +75,14 @@ if config_env() == :prod do
   host = System.get_env("PHX_HOST") || "example.com"
   port = String.to_integer(System.get_env("PORT") || "4000")
 
+  # /dashboard is served only when both are set (AccountsWeb.DashboardAuth).
+  dashboard_user = System.get_env("DASHBOARD_USER")
+  dashboard_password = System.get_env("DASHBOARD_PASSWORD")
+
+  if dashboard_user && dashboard_password do
+    config :accounts, :dashboard, username: dashboard_user, password: dashboard_password
+  end
+
   config :accounts, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
   config :accounts, AccountsWeb.Endpoint,

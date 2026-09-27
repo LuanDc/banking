@@ -41,6 +41,11 @@ config :ledger, Ledger.Messaging.RabbitMQPublisher, url: rabbitmq_url
 config :ledger, Ledger.Messaging.Publisher, adapter: Ledger.Messaging.PublisherMock
 config :ledger, start_messaging: false
 
+# The dashboard's credentials (LedgerWeb.DashboardAuth). The sampler behind its load-test charts
+# does not start in test: its tests start their own.
+config :ledger, :dashboard, username: "banking", password: "banking"
+config :ledger, start_sampler: false
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :ledger, LedgerWeb.Endpoint,

@@ -22,6 +22,10 @@ x-release-env: &release-env
   PHX_HOST: localhost
   # Local only, not a secret: the APIs keep no session or signed data.
   SECRET_KEY_BASE: local-only-secret-key-base-for-the-docker-stack-not-used-in-any-real-deploy
+  # /dashboard on each service (LiveDashboard), with the RabbitMQ management UI's user and
+  # password. Unset, the dashboard is not served.
+  DASHBOARD_USER: banking
+  DASHBOARD_PASSWORD: banking
 
 services:
   # One Postgres server for both services. Each service keeps its own databases —

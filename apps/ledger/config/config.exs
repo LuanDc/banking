@@ -46,6 +46,10 @@ config :logger, :console,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
 
+# LedgerWeb.Telemetry polls the VM every second for the dashboard; the default poller would
+# poll it a second time.
+config :telemetry_poller, :default, false
+
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 

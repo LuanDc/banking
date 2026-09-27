@@ -74,8 +74,8 @@ config :accounts, AccountsWeb.Endpoint,
 # configured to run both http and https servers on
 # different ports.
 
-# Enable dev routes for dashboard and mailbox
-config :accounts, dev_routes: true
+# /dashboard, with the same user and password as the RabbitMQ management UI.
+config :accounts, :dashboard, username: "banking", password: "banking"
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :console, format: "[$level] $message\n"

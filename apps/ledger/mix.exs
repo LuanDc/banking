@@ -60,6 +60,10 @@ defmodule Ledger.MixProject do
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.5"},
 
+      # Monitoring: /dashboard, with the Postgres stats of the read-model database
+      {:phoenix_live_dashboard, "~> 0.8"},
+      {:ecto_psql_extras, "~> 0.8"},
+
       # CQRS / Event sourcing
       {:commanded, "~> 1.4"},
       {:commanded_eventstore_adapter, "~> 1.4"},

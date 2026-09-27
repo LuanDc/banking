@@ -257,6 +257,24 @@ The task also runs on its own: `cd apps/e2e && mix e2e.load`.
 | `--pool-size` | 200 | HTTP connections per service |
 | `--out` | · | also write the report as JSON |
 
+### Watch it on the dashboards
+
+Each service has a [LiveDashboard](../ledger/README.md#dashboard) that samples every second.
+Open both before starting the load (`banking` / `banking`), on the **Metrics** tab:
+http://localhost:4000/dashboard/metrics and http://localhost:4001/dashboard/metrics.
+`scripts/load.sh` prints the links.
+
+| If the report shows… | Look at | Bottleneck when |
+| --- | --- | --- |
+| 🐢 `settle` grows, `accept` stays low | **Accounts / Ledger** › `subscription.lag.events` | the lag keeps climbing: a projector, the saga or the outbox can't keep up |
+| 🐇 a deep `Max backlog` | › `queue.messages` | a queue fills while its consumer is busy (one message at a time, D10) |
+| ⚡ `accept` grows | › `repo.query.queue_time` | the wait for a connection grows faster than `query_time`: the pool is too small. Both grow: Postgres is |
+| 🔥 everything slows down | **VM** › `scheduler_utilization.total` | near 100 %: the CPU quota is used up. Check the run queues too |
+| 💥 failed or unresolved operations | › `error.count` | a `kind` appears: the exception says which part of the infrastructure failed |
+
+The charts keep only what they gathered while the page was open. Postgres itself (locks,
+long-running queries) is on the **Ecto Stats** tab.
+
 ### What it measures
 
 - ⏱️ **Open model.** Operations start on the clock, whatever the answers. A slow system gets a

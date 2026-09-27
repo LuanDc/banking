@@ -33,6 +33,10 @@ All docs are in English, written for developers who find the repo on GitHub.
 - The load test (`mix e2e.load`, D16) is told with the stories' steps (`E2E.Flows`). A change to
   a step serves both. To load-test under the limits, start the stack with
   `docker-compose.load.yml` before `scripts/load.sh`.
+- Each service's `/dashboard` (LiveDashboard, `banking`/`banking`) charts what a load test pushes
+  on: the pool's `queue_time`, the subscriptions' lag, the queues, the errors and the schedulers
+  (`<App>Web.Telemetry`, its `Sampler` and `ErrorCounter`). A new bottleneck worth watching gets
+  a metric there, in both services.
 - **The Postman collection mirrors the e2e stories** (`apps/e2e/postman/`: the collection plus
   a `local` environment).
   - The ExUnit stories are the source of truth. The collection is there for anyone who wants to

@@ -43,6 +43,11 @@ config :accounts, start_projections: false
 # Policies are called directly in tests, for the same reason.
 config :accounts, start_policies: false
 
+# The dashboard's credentials (AccountsWeb.DashboardAuth). The sampler behind its load-test
+# charts does not start in test: its tests start their own.
+config :accounts, :dashboard, username: "banking", password: "banking"
+config :accounts, start_sampler: false
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :accounts, AccountsWeb.Endpoint,

@@ -193,6 +193,7 @@ The same ports are published on your machine:
 | 📒 ledger API | http://localhost:4001/api | http://ledger:4001/api |
 | 📖 Swagger UI (both specs) | http://localhost:8080 | · |
 | 🐇 RabbitMQ management | http://localhost:15672 (`banking` / `banking`) | http://rabbitmq:15672 |
+| 📈 Dashboards ([what they show](apps/e2e/README.md#watch-it-on-the-dashboards)) | http://localhost:4000/dashboard · http://localhost:4001/dashboard (`banking` / `banking`) | http://accounts:4000/dashboard · http://ledger:4001/dashboard |
 | 🐘 Postgres | `localhost:5432` (`postgres` / `postgres`) | `postgres:5432` |
 
 ### Work inside the container
