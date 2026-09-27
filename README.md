@@ -89,6 +89,7 @@ transfers, compensation, closing, and redelivered messages. Each one checks that
 | See how a story test works | [How a story works](apps/e2e/README.md#how-a-story-works) |
 | Run the suite | [Run it](apps/e2e/README.md#run-it) |
 | Browse what is covered | [Stories](apps/e2e/README.md#stories) |
+| Replay them by hand in Postman | [Replay them in Postman](apps/e2e/README.md#replay-them-in-postman) |
 
 ## Quick start
 

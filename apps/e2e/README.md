@@ -14,7 +14,7 @@ system ends up (D15).
 | ⏱️ Runtime | a few seconds; the stories run concurrently |
 
 **Contents:** [How a story works](#how-a-story-works) · [Run it](#run-it) · [Stories](#stories) ·
-[Writing a story](#writing-a-story)
+[Replay them in Postman](#replay-them-in-postman) · [Writing a story](#writing-a-story)
 
 ---
 
@@ -96,6 +96,35 @@ Point the suite elsewhere with `ACCOUNTS_URL`, `LEDGER_URL` and `RABBITMQ_URL`.
 | | 📨 a late `LedgerBatchRejected` for a booked batch gives nothing back | replayed on `ledger.events` |
 | [`books_balance_test`](test/stories/books_balance_test.exs) | ⚖️ total debits equal total credits | Ledger trial balance |
 
+## Replay them in Postman
+
+Want to see it with your own eyes? [`postman/`](postman/) mirrors every story above, one folder
+per test with the same requests and assertions, so you can double-check by hand.
+
+| File | What it is |
+| --- | --- |
+| [⬇️ `banking.postman_collection.json`](postman/banking.postman_collection.json?raw=true) | the 17 stories, grouped by test file |
+| [⬇️ `local.postman_environment.json`](postman/local.postman_environment.json?raw=true) | URLs and RabbitMQ credentials for the local stack |
+
+1. In Postman, **Import** both files and select the `local` environment.
+2. Open a story folder and click **Run** (Collection Runner).
+3. Watch each step: ids and keys chain from one request to the next, and the `Wait until …`
+   steps repeat themselves until they pass, for up to 10 s.
+
+The replay stories publish through the RabbitMQ management API (`:15672`), so they run in
+Postman too. The `Wait until …` steps repeat only in the Runner. Sent one at a time, a step
+that isn't ready yet just shows no result, so send it again.
+
+From the terminal, the same collection runs with Newman:
+
+```bash
+npx newman run apps/e2e/postman/banking.postman_collection.json \
+  -e apps/e2e/postman/local.postman_environment.json
+```
+
+> 🧭 The ExUnit stories are the source of truth. The collection is a mirror: a change to a story
+> updates its folder in the same commit, never the other way around.
+
 ## Writing a story
 
 ```elixir
@@ -119,3 +148,5 @@ end
   of one rule belongs in the service's unit tests, where it costs a millisecond.
 - Use only the public API and the RabbitMQ contract. Don't read the services' databases.
 - Wrap every read that follows a command in `eventually`.
+- Mirror it in [`postman/`](postman/) in the same commit: a folder with the test's name and the
+  same steps. Then run both `mix test` and Newman.
