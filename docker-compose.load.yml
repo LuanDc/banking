@@ -9,12 +9,12 @@
 #   base     1 CPU  / 512m per service   (no variables)
 #   scaled   2 CPUs / 768m per service   BEAM_CPUS=2.0 BEAM_MEMORY=768m
 #
-# Postgres gets 2 CPUs in both (PG_CPUS on a host with room for more).
+# Postgres gets 3 CPUs in both (PG_CPUS to change it).
 #
 # The limits are CFS quotas (`cpus`), like Fargate, Cloud Run or Kubernetes, not pinned cores.
 # Keep them whole numbers: the BEAM sets its online schedulers from the quota, and a fractional
 # quota leaves more busy threads than CPU time, so they get throttled together at the end of each
-# 100 ms period. With the four containers at the base scenario's 5 CPUs, the rest of the host is
+# 100 ms period. With the four containers at the base scenario's 6 CPUs, the rest of the host is
 # left to the load generator; if it starves, it becomes the bottleneck being measured.
 #
 # memswap_limit equals mem_limit: no swap, as in the cloud, so running out of memory is an OOM
@@ -35,12 +35,12 @@ services:
   ledger: *beam
   accounts: *beam
 
-  # Both services' event stores and read models write here, so it gets as many CPUs as the two
-  # services of the base scenario together: at 1 CPU it saturated at 80 operations per second and took Accounts down
-  # (docs/event_storming.md, D18). The four connection pools of 10 fit in the default
-  # max_connections of 100.
+  # Both services' event stores and read models write here, so it is the first to saturate: at
+  # 1 CPU at 80 operations per second, which took Accounts down (docs/event_storming.md, D18), and
+  # at 2 CPUs at 100, while the services still had room. The four connection pools of 10 fit in
+  # the default max_connections of 100.
   postgres:
-    cpus: ${PG_CPUS:-2.0}
+    cpus: ${PG_CPUS:-3.0}
     mem_limit: 1g
     memswap_limit: 1g
     command: >-

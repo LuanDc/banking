@@ -239,7 +239,7 @@ BEAM_CPUS=2.0 BEAM_MEMORY=768m \
 docker compose up -d --wait
 ```
 
-Postgres (2 CPUs, or `PG_CPUS` · 1 GiB) and RabbitMQ (1 CPU · 512 MiB) get their limits in both
+Postgres (3 CPUs, or `PG_CPUS` · 1 GiB) and RabbitMQ (1 CPU · 512 MiB) get their limits in both
 scenarios. The
 [root README](../../README.md#limit-resources-for-a-load-test) explains how they were picked.
 
