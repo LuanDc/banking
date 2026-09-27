@@ -119,6 +119,20 @@ Check that everything is up:
 curl -s http://ledger:4001/api/trial-balance      # {"balanced":true, ...}
 ```
 
+> 🧩 **Bring your own extensions.** The container comes with the Elixir, Phoenix, YAML and
+> Mermaid extensions from [`devcontainer.json`](.devcontainer/devcontainer.json). Themes and
+> keymaps keep working from your machine. To add the extensions you use locally, such as an AI
+> agent:
+>
+> - **Once:** open the command palette (`F1`), search for *Install Local Extensions*, and pick
+>   the ones you want. The Extensions view has the same action behind its cloud button.
+> - **Every time:** list them in your own VS Code user settings. They are then installed in
+>   every dev container on top of the defaults:
+>
+>   ```jsonc
+>   "dev.containers.defaultExtensions": ["anthropic.claude-code", "eamodio.gitlens"]
+>   ```
+
 ### What starts
 
 ```mermaid
