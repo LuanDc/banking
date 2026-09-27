@@ -464,6 +464,7 @@ Red sticky notes raised during modeling. Each one is worth an invariant test onc
 | H7 | **Reversals.** An accounting batch is immutable — is a reversal a new, inverted batch? | Determines whether `LedgerBatchReversed` exists. **Model decided, implementation deferred → D9.** |
 | H8 | **Projection failure.** `LedgerBatchBooked` written but `BalanceView` stale. | Needs projection replay and lag monitoring. **Replay resolved → D11; lag monitoring still open.** |
 | H9 | **Event transport between services.** `accounts` and `ledger` have separate event stores, so Commanded's PubSub does not carry `BalanceReserved` or `LedgerBatchBooked` across. Broker, outbox, or a subscription to the other event store? | Nothing crosses the Context Map until this is decided — it blocks `LedgerRouter` and the saga in section 5. **Resolved → D3.** |
+| H10 | **Retention of decided transfers.** `CustomerAccount` remembers every `transfer_id` it decided, so a late redelivery changes nothing (D4, D17). The set grows with every transfer of the account, in memory while its process lives (5 minutes idle) and in every snapshot. | Options: keep them in a compact form (a hash per id) plus snapshots, with no risk; or a time window, with the risk of a redelivery after it. **Open.** |
 
 ---
 
@@ -593,6 +594,9 @@ decides nothing, whether the first answer is still open, already settled or was 
 rejection is final: if the balance arrived or the account was unfrozen since, a new transfer comes
 with a new `correlation_id`. Without this, a redelivery could reserve money twice after a
 confirmation, or turn a rejected saga into an approved one.
+
+D17 (proposed) moves this key to the business identity, `transfer_id`, and leaves the client's
+`Idempotency-Key` at the API's edge. How long the decided ids are kept is H10.
 
 ### D5 · Business rules live in Accounts; Ledger accounts only open and close
 
@@ -866,3 +870,138 @@ Rejected: running the stories in a loop. ExUnit picks the concurrency, reports p
 without latencies, and the stories are edge cases chosen to prove rules, not a realistic mix.
 Rejected: k6. It brings metrics and thresholds for free, but the flows and the two-book check
 would be rewritten in JavaScript, next to the Elixir ones they must agree with.
+
+### D17 · Identities: aggregates, business identifiers, idempotency and lineage — *proposed*
+
+> **Status: proposed, not implemented.** It amends D4, D12 and D13 once it is built. Until
+> then the code still uses `correlation_id` as described there.
+
+Today the `correlation_id` plays four roles at once. It is the transfer's identity (the key of
+its reservation and credit), the client's `Idempotency-Key`, the `batch_id` in the Ledger, and
+the thread that ties a saga's messages together in the logs. The first is business, the second
+belongs to the API, the third to the Ledger, and the last to infrastructure. Mixing them made the
+deduplication look like "retry protection" when it is a business invariant, and tied the domain's
+identity to a value the client picked.
+
+**Each field lives where its reader is:**
+
+| Who reads it | Where it lives | Fields |
+| --- | --- | --- |
+| 🟨 Business rules | the command or event payload | `account_id`, `transfer_id`, `batch_id`, `amount`, … |
+| 🌐 The API, to answer a retry | the HTTP edge, never the domain | `Idempotency-Key` |
+| 🧵 The event store and whoever audits a flow | event metadata | `correlation_id` (the conversation's root), `causation_id` (the message that caused this one) |
+| 🔭 An observability backend | transport headers | `traceparent` (W3C), once tracing exists |
+
+#### One identity per aggregate, named after its concept
+
+Each aggregate has exactly one identity: its stream. Everything else it holds is a reference to
+another identity. Every id is named `<concept>_id` in commands, events, read models and the API,
+the same name for the same value everywhere. No message has a bare `id`: an event names several
+identities at once, and its field names are the only documentation that travels with it.
+
+| Aggregate | Identity (stream) | References it holds |
+| --- | --- | --- |
+| `CustomerAccount` | `account_id` | `transfer_id` as the local identity of its reservations and pending credits (entities inside the account); `to_account_id`, `from_account_id` |
+| `LedgerAccount` | `account_id` (the customer account's, 1:1, D5) or a chart-of-accounts code for the bank's own accounts (`pix-settlement`) | — |
+| `TransactionBatch` | `batch_id` | `transfer_id` (the transfer it settles); `account_id` on each entry |
+| Transfer | not an aggregate: the saga stays stateless (D13) | `transfer_id` is the concept's identity, referenced by all of the above |
+
+A command's identity field routes it, and its references say what inside the aggregate it is
+about. `ConfirmReservation{account_id, transfer_id}` goes to the account `account_id` and
+confirms the reservation of `transfer_id` in it.
+
+#### What each identifier is
+
+- **`transfer_id`: the transfer's identity.** A UUID generated by Accounts when it accepts a
+  transfer or a deposit. The customer and support look a transfer up by it, and
+  `GET /api/transfers/{transfer_id}` returns it. For an inbound PIX, the scheme's `endToEndId`
+  is a natural external reference, kept as an attribute once the lab models it.
+- **`batch_id`: the ledger entry's identity.** A batch is an accounting entry, not the transfer:
+  a transfer may lead to more than one (the reversal of D9 is a new batch). The settlement
+  batch's id is derived, `UUIDv5(namespace, "settlement:" <> transfer_id)`, so a redelivered
+  command lands on the same batch. "A transfer is settled once" becomes an explicit rule instead of
+  a side effect of a retry key.
+- **`Idempotency-Key`: an API contract.** The same key from the same client returns the same
+  `transfer_id`. Accounts keeps a table `idempotency_keys(scope, key, transfer_id, request_hash,
+  inserted_at)` with a unique `(scope, key)`, where the scope is the source account until the
+  API has clients of its own. It is written before the dispatch. A retry finds the row and
+  dispatches again with the same `transfer_id`, which the aggregate decides once. The same key with
+  a different body is `422 idempotency_key_reused`. Rows older than 24 hours are purged: a window
+  is right here, since it guards against a client's retries. It is not a read model (D11): no
+  projector owns it, and the edge writes it synchronously.
+- **`correlation_id` and `causation_id`: lineage only.** Commanded's native metadata. The
+  `correlation_id` is the id of the conversation's first command, and every hop passes it on.
+  Event handlers dispatch with `correlation_id: metadata.correlation_id, causation_id:
+  metadata.event_id`. RabbitMQ messages carry it in the AMQP `correlation_id` property and the
+  causation in a `causation_id` header, never in the body. The consumers dispatch with both.
+  Handlers and consumers set them as `Logger` metadata. No rule reads them.
+- **Trace context: later, and separate.** With OpenTelemetry, `traceparent` travels in the HTTP
+  and AMQP headers, and the `trace_id` may be stored in event metadata as a link to the trace.
+  The two are not the same: a saga crosses queues, retries and hours, and splits into several
+  traces, while its lineage in the event store stays whole.
+
+#### A customer account's identifiers
+
+| Identifier | Stable? | Role |
+| --- | --- | --- |
+| `account_id`, a UUID generated by the system | never changes or gets reused | the aggregate's identity; the other contexts reference it |
+| Bank + branch + number + check digit | can change (branch migration, merger, portability) | a business identifier: the `AccountNumber` value object inside `CustomerAccount`, looked up through a read model |
+| PIX keys (CPF, e-mail, phone, random) | change often | aliases for the account, in a directory of their own |
+| A database autoincrement | tied to a table | persistence only: never in a message, a URL or another service |
+
+- **The id must exist before the first write.** An event-sourced aggregate's stream is created by
+  its first event, so the dispatcher needs the id first. An autoincrement only exists after an
+  `INSERT`, and here the account's table is a projection. It would also expose the number of
+  customers and let a client enumerate accounts.
+- **A business identifier that changes is an event, not a new identity.** A branch migration is
+  an `AccountNumberChanged` on the same stream, and the Ledger, the history and the reservations
+  keep pointing at the same `account_id`.
+- **The account number is allocated, not validated.** An aggregate cannot see the others, so it
+  cannot check that a number is unique across the bank (set validation). A `Branch` aggregate
+  holds a counter and hands out the next number with its check digit (mod 11), which makes the
+  number unique by construction. The account number is not in the lab yet. This is the model it
+  follows once it is.
+- UUIDv7 is time-ordered and keeps indexes more compact than the random v4 that `Ecto.UUID`
+  generates. New ids may use it, and nothing else changes.
+
+#### Deduplication becomes a business rule (amends D4)
+
+- `CustomerAccount` decides each `transfer_id` once: one reservation on the source, one credit
+  authorization on the destination. It keeps the in-flight ones (`reservations`,
+  `pending_credits`) and the decided ones. The decided ids are what makes a late redelivery
+  harmless, and how long to keep them is open (**H10**).
+- `TransactionBatch` decides each `batch_id` once, as today.
+- A client's retry is answered at the edge by the `Idempotency-Key`, before any command.
+
+#### Migration
+
+- **Stored events.** Those written before this decision carry only `correlation_id`, which was
+  the transfer's identity. Their decoders read it as `transfer_id`, so no event is rewritten and
+  the aggregates and projectors see one shape.
+- **Messages in flight.** For one release, the consumers of both services accept `transfer_id`
+  or the old `correlation_id` in the body, and take the lineage from the AMQP properties when
+  they are there.
+- **Read models.** A migration renames the `correlation_id` column of `reservations` and
+  `credits` to `transfer_id`, with no replay.
+- **API.** `POST /api/transfers` and the deposit return `transfer_id`, and
+  `GET /api/transfers/{transfer_id}` replaces the correlation path. The `Idempotency-Key`
+  header keeps working. The OpenAPI specs change first (D12), then the e2e stories and their
+  Postman mirror, then the load test.
+
+#### Rejected
+
+- **A `Transfer` aggregate per `transfer_id` as the deduplication gate.** It covers only the
+  first step: the later steps are still delivered at least once, and the account that applies
+  the effect has to remember what it decided either way.
+- **`correlation_id = trace_id`.** It holds while a flow fits in one trace. Across queues and
+  retries the trace splits, and the lineage in the event store is what stays whole.
+- **The `Idempotency-Key` as the aggregate's key (today).** The client picks it, it can only be
+  unique per client, and a window on it would expire the business invariant along with it.
+- **A bare `id` field for every aggregate.** Messages name several identities at once, and the
+  name is their only documentation.
+
+**Open:**
+- **H10**, how long `CustomerAccount` keeps the decided `transfer_id`s.
+- Whether a reservation should expire, which would revisit D6. With `transfer_id`, a saga
+  timeout could release the reservation, and the Ledger would refuse a late batch because the
+  settlement of that `transfer_id` is already decided.

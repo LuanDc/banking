@@ -3,7 +3,7 @@
 Two Phoenix services built on Commanded, under `apps/`. `apps/accounts/` is the Account
 Management Context and `apps/ledger/` is the Ledger Context. They share no code and no database;
 run `mix` inside each one. `docs/event_storming.md` is the design document: sections 3–7 hold the
-model and section 10 the decisions (D1…D16). Read the relevant decision before changing its
+model and section 10 the decisions (D1…D17). Read the relevant decision before changing its
 area. Code comments cite it as "README, Dn" from before it moved.
 
 ## Documentation
