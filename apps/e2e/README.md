@@ -58,27 +58,36 @@ sequenceDiagram
 
 ## Run it
 
-> 🐳 Needs the whole stack running. The script starts it for you.
+> 🐳 Needs the whole stack running: both services and RabbitMQ. The script starts nothing, so it
+> runs the same on your machine, in the dev container or against another server.
 
-**One command, from the repo root** (on the host, only Docker is needed):
+**One command, from the repo root** (needs Elixir, curl, and Newman or npx):
 
 ```bash
-scripts/e2e.sh                                  # prod stack, then mix test, then Newman
+scripts/e2e.sh                                  # check the services, then mix test, then Newman
 scripts/e2e.sh test/stories/transfer_test.exs   # extra arguments go to mix test
-scripts/e2e.sh --dev                            # against the dev-mode services
 scripts/e2e.sh --skip-newman
+
+# 🌍 Against another server
+ACCOUNTS_URL=http://staging:4000 LEDGER_URL=http://staging:4001 \
+  RABBITMQ_URL=amqp://banking:banking@staging:5672 scripts/e2e.sh
 ```
 
 | Step | What the script does |
 | --- | --- |
-| 🚀 Stack | `docker compose up -d --build --wait`: the prod releases, rebuilt from the current code. It also takes off any load limits |
-| 🧰 Runner | starts the dev container's `workspace` if it isn't running (`--no-deps`), and runs everything there |
-| ⏳ Wait | until both services answer |
-| 🎬 Stories | `mix test` in `apps/e2e` |
-| 📮 Mirror | Newman on the Postman collection |
+| 🩺 Check | pings Accounts, the Ledger, its `pix-settlement` account, RabbitMQ (AMQP) and its management API. If one is down, it logs which and stops |
+| 🎬 Stories | `mix deps.get`, then `mix test` in `apps/e2e` |
+| 📮 Mirror | Newman on the Postman collection, with the same URLs |
 
-Inside the dev container there is no Docker, so the script skips the first step and runs against
-whichever mode is up.
+| Variable | Default | Used for |
+| --- | --- | --- |
+| `ACCOUNTS_URL` | `http://localhost:4000` | the Accounts API |
+| `LEDGER_URL` | `http://localhost:4001` | the Ledger API |
+| `RABBITMQ_URL` | `amqp://banking:banking@localhost:5672` | the broker, where replayed messages go |
+| `RABBITMQ_MANAGEMENT_URL` | `RABBITMQ_URL`'s user and host, port 15672 | queue counts and dead letters |
+
+The defaults match `docker compose up -d --wait` on your machine. The dev container's workspace
+already sets the variables to the other containers.
 
 **By hand**, against a stack that is already up. In the dev container, `ACCOUNTS_URL`,
 `LEDGER_URL` and `RABBITMQ_URL` already point at the services:
@@ -197,24 +206,28 @@ flowchart LR
 
 ### Run a load test
 
-From the repo root, on the host (it needs Docker to set the limits):
+From the repo root, against services that are already up, wherever they run. The URLs come
+from the same variables as the stories ([Run it](#run-it)):
 
 ```bash
-scripts/load.sh                                          # 📉 base: 1 CPU · 512 MiB per service
-scripts/load.sh --scaled                                 # 📈 scaled: 2 CPUs · 768 MiB
-scripts/load.sh --rate 100 --duration 120 --accounts 50  # extra arguments go to mix e2e.load
-scripts/load.sh --scaled --mix transfer=100
+scripts/load.sh
+scripts/load.sh --rate 100 --duration 120 --accounts 50  # arguments go to mix e2e.load
+scripts/load.sh --mix transfer=100
+
+# 🌍 Against another server
+ACCOUNTS_URL=http://staging:4000 LEDGER_URL=http://staging:4001 \
+  RABBITMQ_URL=amqp://banking:banking@staging:5672 scripts/load.sh
 ```
 
-1. 🚀 Rebuilds the release images and recreates `ledger`, `accounts`, Postgres and RabbitMQ with
-   the limits of [`docker-compose.load.yml`](../../docker-compose.load.yml), then prints them.
-2. 🧰 Runs the generator in the `workspace` container, outside the limits.
-3. 📊 Prints the report, then the CPU periods each container was throttled during the run and
-   its memory at the end. The JSON report goes to `apps/e2e/load-results/` (ignored by git).
-4. ↩️ The limits stay on. `docker compose up -d --wait` takes them off, and so does
-   `scripts/e2e.sh`.
+1. 🩺 Pings every service, as `scripts/e2e.sh` does. If one is down, it logs which and stops.
+2. 📊 Runs `mix e2e.load` and prints the report. The JSON report goes to
+   `apps/e2e/load-results/` (ignored by git).
 
-Against a stack that is already up, the task runs on its own: `cd apps/e2e && mix e2e.load`.
+The script sets no limits. To measure the local stack in a small cloud footprint, start it with
+[`docker-compose.load.yml`](../../docker-compose.load.yml) first (see the
+[root README](../../README.md#limit-resources-for-a-load-test)).
+
+The task also runs on its own: `cd apps/e2e && mix e2e.load`.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -275,7 +288,7 @@ transfer   2400   completed 2400           2894 / 5703 / 5843 11476 / 13303 / 13
 ```
 
 Here `ledger.commands` backs up and `settle` climbs to seconds while the Ledger works through
-the queue: its single consumer (D10) is the ceiling. Compare `--scaled`: if throughput
+the queue: its single consumer (D10) is the ceiling. Compare the scaled limits: if throughput
 doesn't follow the CPUs, the limit is elsewhere, likely Postgres, which both event stores write
 to.
 

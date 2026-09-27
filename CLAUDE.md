@@ -22,12 +22,17 @@ All docs are in English, written for developers who find the repo on GitHub.
 
 - Develop test-first, one red → green per behavior, following the `baby-steps-tdd` skill.
 - Before every commit, run `mix test` and `mix quality` in each service you changed.
-- `apps/e2e` holds the story tests across both running services (D15). Run them against the
-  prod stack with `scripts/e2e.sh` from the host (it starts the stack, then runs `mix test` and
-  Newman) before committing a change to a message, a saga step or an endpoint, and add a story
-  when a new flow crosses a boundary. Edge cases stay in the services' unit tests.
+- `apps/e2e` holds the story tests across both running services (D15). Before committing a
+  change to a message, a saga step or an endpoint, start the prod stack
+  (`docker compose up -d --build --wait`) and run `scripts/e2e.sh`. Add a story when a new flow
+  crosses a boundary. Edge cases stay in the services' unit tests.
+- `scripts/e2e.sh` and `scripts/load.sh` start nothing. They ping the services at
+  `ACCOUNTS_URL`, `LEDGER_URL` and `RABBITMQ_URL` (localhost by default) and stop if one is
+  down, then run `mix test` and Newman, or `mix e2e.load`, where they are called. That can be
+  the host, the workspace or another server.
 - The load test (`mix e2e.load`, D16) is told with the stories' steps (`E2E.Flows`). A change to
-  a step serves both. `scripts/load.sh` runs it under `docker-compose.load.yml`.
+  a step serves both. To load-test under the limits, start the stack with
+  `docker-compose.load.yml` before `scripts/load.sh`.
 - **The Postman collection mirrors the e2e stories** (`apps/e2e/postman/`: the collection plus
   a `local` environment).
   - The ExUnit stories are the source of truth. The collection is there for anyone who wants to

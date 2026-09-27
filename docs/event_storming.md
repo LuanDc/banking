@@ -845,8 +845,9 @@ worth reconsidering if a UI arrives.
 A load test asks whether the stories still end where they should with many customers at once,
 and how long they take. It lives in `apps/e2e` next to the stories and is told with their parts:
 the same HTTP clients, the same steps (`E2E.Flows`: open, fund, wait for a transfer, check both
-books), and the same RabbitMQ contract. `mix e2e.load` runs it; `scripts/load.sh` starts the prod
-stack with the limits of `docker-compose.load.yml` first.
+books), and the same RabbitMQ contract. `mix e2e.load` runs it, and `scripts/load.sh` checks the
+services first. It runs against any stack that is up: the local one squeezed by
+`docker-compose.load.yml`, or another server.
 
 - **An open model.** Operations start on the clock at a fixed rate, whatever the answers, as
   customers do. The saga is asynchronous (the `202` comes before the booking), so a closed loop

@@ -6,8 +6,9 @@ defmodule E2E.Preflight do
   @start_hint """
   Start the stack first, from the repo root (see apps/e2e/README.md):
 
-      scripts/e2e.sh                  # the prod stack, then the stories
-      docker compose up -d --wait     # or just the stack
+      docker compose up -d --build --wait
+
+  Or point ACCOUNTS_URL, LEDGER_URL and RABBITMQ_URL at where it runs.
 
   Or, with the services on the host, only the infrastructure in Docker:
 

@@ -3,8 +3,7 @@ defmodule Mix.Tasks.E2e.Load do
 
   @moduledoc """
   Runs `E2E.Load` against the running services, prints the report and fails when the books
-  don't add up. `scripts/load.sh`, from the repo root, starts the stack with the load limits
-  first.
+  don't add up. `scripts/load.sh`, from the repo root, pings the services first.
 
       mix e2e.load --rate 50 --duration 60 --accounts 50 --mix transfer=80,deposit=15,read=5
 
