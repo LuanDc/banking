@@ -24,7 +24,7 @@ defmodule Ledger.TransactionBatches do
         {:ok,
          %{
            batch_id: batch_id,
-           correlation_id: first.correlation_id,
+           transfer_id: first.transfer_id,
            booked_at: first.booked_at,
            entries: entries
          }}

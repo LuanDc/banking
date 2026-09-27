@@ -7,7 +7,7 @@ defmodule Ledger.Projections.StatementEntry do
 
   schema "ledger_entries" do
     field :batch_id, :string
-    field :correlation_id, :string
+    field :transfer_id, :string
     field :position, :integer
     field :account_id, :string
     field :type, Ecto.Enum, values: [:debit, :credit]

@@ -15,7 +15,7 @@ defmodule Ledger.Handlers.Projectors.StatementProjectorTest do
     assert [
              %StatementEntry{
                batch_id: "batch-1",
-               correlation_id: "corr-1",
+               transfer_id: "corr-1",
                position: 0,
                account_id: "pix",
                type: :debit,
@@ -47,7 +47,7 @@ defmodule Ledger.Handlers.Projectors.StatementProjectorTest do
   defp booked_batch do
     %LedgerBatchBooked{
       batch_id: "batch-1",
-      correlation_id: "corr-1",
+      transfer_id: "corr-1",
       entries: [
         %LedgerEntry{account_id: "pix", type: :debit, amount: 1_000},
         %LedgerEntry{account_id: "acc-1", type: :credit, amount: 1_000}

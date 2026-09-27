@@ -12,7 +12,7 @@ defmodule Ledger.EventsSerializationTest do
     %Events.LedgerAccountClosed{account_id: "acc-1"},
     %Events.LedgerBatchBooked{
       batch_id: "batch-1",
-      correlation_id: "corr-1",
+      transfer_id: "corr-1",
       entries: [
         %LedgerEntry{account_id: "acc-1", type: :debit, amount: 1_000},
         %LedgerEntry{account_id: "acc-2", type: :credit, amount: 1_000}
@@ -20,7 +20,7 @@ defmodule Ledger.EventsSerializationTest do
     },
     %Events.LedgerBatchRejected{
       batch_id: "batch-1",
-      correlation_id: "corr-1",
+      transfer_id: "corr-1",
       reason: :unbalanced,
       entries: [
         %LedgerEntry{account_id: "acc-1", type: :debit, amount: 1_000},

@@ -10,19 +10,19 @@ defmodule Ledger.TransactionBatchesTest do
 
       insert(:statement_entry,
         batch_id: batch_id,
-        correlation_id: "corr-1",
+        transfer_id: "corr-1",
         position: 1,
         type: :credit
       )
 
       insert(:statement_entry,
         batch_id: batch_id,
-        correlation_id: "corr-1",
+        transfer_id: "corr-1",
         position: 0,
         type: :debit
       )
 
-      assert {:ok, %{batch_id: ^batch_id, correlation_id: "corr-1", entries: entries}} =
+      assert {:ok, %{batch_id: ^batch_id, transfer_id: "corr-1", entries: entries}} =
                TransactionBatches.get_batch(batch_id)
 
       assert Enum.map(entries, & &1.type) == [:debit, :credit]

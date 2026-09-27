@@ -55,7 +55,7 @@ defmodule Ledger.Handlers.Projectors.BalancesProjectorTest do
   end
 
   defp batch(batch_id, entries) do
-    %LedgerBatchBooked{batch_id: batch_id, correlation_id: "corr-" <> batch_id, entries: entries}
+    %LedgerBatchBooked{batch_id: batch_id, transfer_id: "corr-" <> batch_id, entries: entries}
   end
 
   defp debit(account_id, amount),

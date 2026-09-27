@@ -25,14 +25,14 @@ defmodule Ledger.Aggregates.TransactionBatch do
       :ok ->
         %LedgerBatchBooked{
           batch_id: command.batch_id,
-          correlation_id: command.correlation_id,
+          transfer_id: command.transfer_id,
           entries: command.entries
         }
 
       {:error, reason} ->
         %LedgerBatchRejected{
           batch_id: command.batch_id,
-          correlation_id: command.correlation_id,
+          transfer_id: command.transfer_id,
           reason: reason,
           entries: command.entries
         }

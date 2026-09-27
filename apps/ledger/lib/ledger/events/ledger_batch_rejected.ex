@@ -5,7 +5,7 @@ defmodule Ledger.Events.LedgerBatchRejected do
   """
 
   @derive Jason.Encoder
-  defstruct [:batch_id, :correlation_id, :reason, entries: []]
+  defstruct [:batch_id, :transfer_id, :reason, entries: []]
 
   defimpl Commanded.Serialization.JsonDecoder do
     alias Ledger.LedgerEntry

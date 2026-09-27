@@ -163,7 +163,7 @@ Errors: `404 not_found`, and `422 invalid_query` for a bad filter or cursor.
 ### 🟨 `TransactionBatch`
 
 [`lib/ledger/aggregates/transaction_batch.ex`](lib/ledger/aggregates/transaction_batch.ex): one stream per `batch_id`,
-which is the transfer's `correlation_id`. So a redelivered command finds the batch already
+which is the transfer's `transfer_id`. So a redelivered command finds the batch already
 decided and books nothing (D4).
 
 ```mermaid
@@ -218,7 +218,7 @@ Commands arrive as JSON on `ledger.commands`, with the `type` as an AMQP propert
 | --- | --- | --- |
 | `OpenLedgerAccount` | `account_id` | `LedgerAccount` |
 | `CloseLedgerAccount` | `account_id` | `LedgerAccount` |
-| `BookTransactionBatch` | `batch_id`, `correlation_id`, `entries: [{account_id, type, amount}]` | `TransactionBatch` |
+| `BookTransactionBatch` | `batch_id`, `transfer_id`, `entries: [{account_id, type, amount}]` | `TransactionBatch` |
 
 Open and close are dispatched with strong consistency, so the next batch on the queue already
 sees the account. `BookTransactionBatch` also has an internal `accounts_not_open` field, which
@@ -232,8 +232,8 @@ the middleware fills and no sender sets.
 | --- | --- | --- | --- |
 | 🟢 | `LedgerAccountOpened` | `account_id` | — internal |
 | 🔴 | `LedgerAccountClosed` | `account_id` | — internal |
-| ✅ | `LedgerBatchBooked` | `batch_id`, `correlation_id`, `entries` | 📣 `ledger.batch.booked` |
-| ❌ | `LedgerBatchRejected` | `batch_id`, `correlation_id`, `reason`, `entries` | 📣 `ledger.batch.rejected` |
+| ✅ | `LedgerBatchBooked` | `batch_id`, `transfer_id`, `entries` | 📣 `ledger.batch.booked` |
+| ❌ | `LedgerBatchRejected` | `batch_id`, `transfer_id`, `reason`, `entries` | 📣 `ledger.batch.rejected` |
 
 A rejection carries its entries, so a subscriber knows whom to compensate without keeping
 state (D13).
@@ -266,7 +266,7 @@ erDiagram
     ledger_entries {
         bigserial id PK
         text batch_id "unique with position"
-        text correlation_id
+        text transfer_id
         integer position
         text account_id
         text type "debit, credit"

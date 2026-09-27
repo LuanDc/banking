@@ -19,7 +19,7 @@ defmodule Ledger.Handlers.LedgerEventsPublisherTest do
       :ok
     end)
 
-    event = %LedgerBatchBooked{batch_id: "batch-1", correlation_id: "corr-1", entries: []}
+    event = %LedgerBatchBooked{batch_id: "batch-1", transfer_id: "corr-1", entries: []}
 
     assert :ok = LedgerEventsPublisher.handle(event, @metadata)
   end

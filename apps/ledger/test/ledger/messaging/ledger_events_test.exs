@@ -18,7 +18,7 @@ defmodule Ledger.Messaging.LedgerEventsTest do
   ]
 
   test "publishes a booked batch with its entries" do
-    event = %LedgerBatchBooked{batch_id: "batch-1", correlation_id: "corr-1", entries: @entries}
+    event = %LedgerBatchBooked{batch_id: "batch-1", transfer_id: "corr-1", entries: @entries}
 
     assert LedgerEvents.for_event(event, @metadata) == %{
              message_id: "evt-1",
@@ -31,7 +31,7 @@ defmodule Ledger.Messaging.LedgerEventsTest do
   test "publishes a rejected batch with its reason and the entries it would have booked" do
     event = %LedgerBatchRejected{
       batch_id: "batch-1",
-      correlation_id: "corr-1",
+      transfer_id: "corr-1",
       reason: :account_not_open,
       entries: @entries
     }

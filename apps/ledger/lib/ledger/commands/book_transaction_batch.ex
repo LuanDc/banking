@@ -6,5 +6,5 @@ defmodule Ledger.Commands.BookTransactionBatch do
   ledger accounts (README, D5), so the aggregate stays a pure function of its command.
   """
 
-  defstruct [:batch_id, :correlation_id, :entries, accounts_not_open: []]
+  defstruct [:batch_id, :transfer_id, :entries, accounts_not_open: []]
 end

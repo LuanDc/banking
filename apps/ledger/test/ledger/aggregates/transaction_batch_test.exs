@@ -11,14 +11,14 @@ defmodule Ledger.Aggregates.TransactionBatchTest do
     test "emits LedgerBatchBooked for a balanced batch" do
       entries = [debit("acc-1", 1_000), credit("acc-2", 1_000)]
 
-      assert %LedgerBatchBooked{batch_id: "batch-1", correlation_id: "corr-1", entries: ^entries} =
+      assert %LedgerBatchBooked{batch_id: "batch-1", transfer_id: "corr-1", entries: ^entries} =
                book(entries)
     end
 
     test "emits LedgerBatchRejected when debits and credits differ" do
       assert %LedgerBatchRejected{
                batch_id: "batch-1",
-               correlation_id: "corr-1",
+               transfer_id: "corr-1",
                reason: :unbalanced
              } = book([debit("acc-1", 1_000), credit("acc-2", 999)])
     end
@@ -58,7 +58,7 @@ defmodule Ledger.Aggregates.TransactionBatchTest do
     test "rejects a batch touching an account that is not open (D5)" do
       command = %BookTransactionBatch{
         batch_id: "batch-1",
-        correlation_id: "corr-1",
+        transfer_id: "corr-1",
         entries: [debit("acc-1", 1_000), credit("acc-2", 1_000)],
         accounts_not_open: ["acc-2"]
       }
@@ -84,7 +84,7 @@ defmodule Ledger.Aggregates.TransactionBatchTest do
     test "marks the batch as booked" do
       event = %LedgerBatchBooked{
         batch_id: "batch-1",
-        correlation_id: "corr-1",
+        transfer_id: "corr-1",
         entries: [debit("acc-1", 1_000), credit("acc-2", 1_000)]
       }
 
@@ -95,7 +95,7 @@ defmodule Ledger.Aggregates.TransactionBatchTest do
 
   describe "applying LedgerBatchRejected" do
     test "marks the batch as rejected" do
-      event = %LedgerBatchRejected{batch_id: "batch-1", correlation_id: "corr-1", reason: :empty}
+      event = %LedgerBatchRejected{batch_id: "batch-1", transfer_id: "corr-1", reason: :empty}
 
       assert %TransactionBatch{batch_id: "batch-1", status: :rejected} =
                TransactionBatch.apply(%TransactionBatch{}, event)
@@ -123,7 +123,7 @@ defmodule Ledger.Aggregates.TransactionBatchTest do
   defp book(entries, batch \\ %TransactionBatch{}) do
     command = %BookTransactionBatch{
       batch_id: "batch-1",
-      correlation_id: "corr-1",
+      transfer_id: "corr-1",
       entries: entries
     }
 

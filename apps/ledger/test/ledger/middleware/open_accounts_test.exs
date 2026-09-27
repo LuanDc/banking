@@ -13,7 +13,7 @@ defmodule Ledger.Middleware.OpenAccountsTest do
 
     command = %BookTransactionBatch{
       batch_id: "batch-1",
-      correlation_id: "corr-1",
+      transfer_id: "corr-1",
       entries: [
         %LedgerEntry{account_id: open.account_id, type: :debit, amount: 1_000},
         %LedgerEntry{account_id: closed.account_id, type: :credit, amount: 500},

@@ -18,7 +18,7 @@ defmodule Ledger.Handlers.Projectors.StatementProjector do
       |> Enum.map(fn {entry, position} ->
         %{
           batch_id: event.batch_id,
-          correlation_id: event.correlation_id,
+          transfer_id: event.transfer_id,
           position: position,
           account_id: entry.account_id,
           type: entry.type,

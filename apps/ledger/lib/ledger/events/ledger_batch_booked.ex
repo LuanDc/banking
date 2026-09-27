@@ -4,7 +4,7 @@ defmodule Ledger.Events.LedgerBatchBooked do
   """
 
   @derive Jason.Encoder
-  defstruct [:batch_id, :correlation_id, :entries]
+  defstruct [:batch_id, :transfer_id, :entries]
 
   defimpl Commanded.Serialization.JsonDecoder do
     alias Ledger.LedgerEntry

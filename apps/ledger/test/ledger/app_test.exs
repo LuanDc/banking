@@ -27,7 +27,7 @@ defmodule Ledger.AppTest do
   test "dispatches to TransactionBatch" do
     command = %BookTransactionBatch{
       batch_id: Ecto.UUID.generate(),
-      correlation_id: "corr-1",
+      transfer_id: "corr-1",
       entries: [
         %LedgerEntry{account_id: "acc-1", type: :debit, amount: 1_000},
         %LedgerEntry{account_id: "acc-2", type: :credit, amount: 1_000}
@@ -46,7 +46,7 @@ defmodule Ledger.AppTest do
     assert :ok =
              App.dispatch(%BookTransactionBatch{
                batch_id: batch_id,
-               correlation_id: "corr-1",
+               transfer_id: "corr-1",
                entries: [
                  %LedgerEntry{account_id: account_id, type: :debit, amount: 1_000},
                  %LedgerEntry{account_id: account_id, type: :credit, amount: 1_000}

@@ -16,6 +16,8 @@ defmodule LedgerWeb.LedgerAccountJSON do
   def trial_balance(%{trial_balance: trial_balance}), do: trial_balance
 
   defp entry(entry) do
-    Map.take(entry, [:batch_id, :correlation_id, :type, :amount, :booked_at])
+    entry
+    |> Map.take([:batch_id, :type, :amount, :booked_at])
+    |> Map.put(:correlation_id, entry.transfer_id)
   end
 end

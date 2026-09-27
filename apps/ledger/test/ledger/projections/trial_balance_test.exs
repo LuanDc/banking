@@ -20,7 +20,7 @@ defmodule Ledger.Projections.TrialBalanceTest do
 
   defp book(event_number, entries) do
     batch_id = "batch-#{event_number}"
-    event = %LedgerBatchBooked{batch_id: batch_id, correlation_id: batch_id, entries: entries}
+    event = %LedgerBatchBooked{batch_id: batch_id, transfer_id: batch_id, entries: entries}
 
     BalancesProjector.handle(event, %{
       handler_name: "balances_projector",

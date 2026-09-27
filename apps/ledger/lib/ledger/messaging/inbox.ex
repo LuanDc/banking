@@ -39,7 +39,7 @@ defmodule Ledger.Messaging.Inbox do
     {:ok,
      %BookTransactionBatch{
        batch_id: payload["batch_id"],
-       correlation_id: payload["correlation_id"],
+       transfer_id: payload["correlation_id"],
        entries: Enum.map(payload["entries"], &to_entry/1)
      }}
   end

@@ -56,7 +56,7 @@ defmodule Ledger.Messaging.InboxTest do
       assert {:ok,
               %BookTransactionBatch{
                 batch_id: "batch-1",
-                correlation_id: "corr-1",
+                transfer_id: "corr-1",
                 entries: [
                   %LedgerEntry{account_id: "acc-1", type: :debit, amount: 1_000},
                   %LedgerEntry{account_id: "acc-2", type: :credit, amount: 1_000}

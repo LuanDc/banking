@@ -31,7 +31,7 @@ defmodule Ledger.Factory do
   def statement_entry_factory do
     %StatementEntry{
       batch_id: sequence(:batch_id, &"batch-#{&1}"),
-      correlation_id: sequence(:correlation_id, &"corr-#{&1}"),
+      transfer_id: sequence(:transfer_id, &"corr-#{&1}"),
       position: 0,
       account_id: Ecto.UUID.generate(),
       type: :credit,
