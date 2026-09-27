@@ -31,7 +31,7 @@ defmodule Accounts.Messaging.LedgerEventsInboxTest do
         "type" => "LedgerBatchRejected",
         "payload" => %{
           "batch_id" => "corr-1",
-          "correlation_id" => "corr-1",
+          "transfer_id" => "corr-1",
           "reason" => "account_not_open",
           "entries" => @entries
         }
@@ -65,7 +65,7 @@ defmodule Accounts.Messaging.LedgerEventsInboxTest do
   defp booked(entries) do
     %{
       "type" => "LedgerBatchBooked",
-      "payload" => %{"batch_id" => "corr-1", "correlation_id" => "corr-1", "entries" => entries}
+      "payload" => %{"batch_id" => "corr-1", "transfer_id" => "corr-1", "entries" => entries}
     }
   end
 end

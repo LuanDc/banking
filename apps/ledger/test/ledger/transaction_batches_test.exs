@@ -32,4 +32,36 @@ defmodule Ledger.TransactionBatchesTest do
       assert {:error, :not_found} = TransactionBatches.get_batch("rejected")
     end
   end
+
+  describe "list_batches/1" do
+    test "returns the batches that settle a transfer, each with its entries in order" do
+      transfer_id = Ecto.UUID.generate()
+      batch_id = Ecto.UUID.generate()
+
+      insert(:statement_entry,
+        batch_id: batch_id,
+        transfer_id: transfer_id,
+        position: 1,
+        type: :credit
+      )
+
+      insert(:statement_entry,
+        batch_id: batch_id,
+        transfer_id: transfer_id,
+        position: 0,
+        type: :debit
+      )
+
+      insert(:statement_entry, batch_id: Ecto.UUID.generate(), position: 0)
+
+      assert {:ok, [%{batch_id: ^batch_id, transfer_id: ^transfer_id, entries: entries}]} =
+               TransactionBatches.list_batches(transfer_id)
+
+      assert Enum.map(entries, & &1.type) == [:debit, :credit]
+    end
+
+    test "is empty for a transfer with no booked batch" do
+      assert {:ok, []} = TransactionBatches.list_batches(Ecto.UUID.generate())
+    end
+  end
 end

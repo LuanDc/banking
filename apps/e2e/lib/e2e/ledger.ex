@@ -17,10 +17,13 @@ defmodule E2E.Ledger do
   @spec batch(String.t()) :: response
   def batch(batch_id), do: get("/api/batches/#{batch_id}")
 
+  @spec batches(String.t()) :: response
+  def batches(transfer_id), do: get("/api/batches", transfer_id: transfer_id)
+
   @spec trial_balance() :: response
   def trial_balance, do: get("/api/trial-balance")
 
-  defp get(path), do: Req.get!(client(), url: path)
+  defp get(path, params \\ []), do: Req.get!(client(), url: path, params: params)
 
   defp client do
     [base_url: Application.fetch_env!(:e2e, :ledger_url), retry: false]

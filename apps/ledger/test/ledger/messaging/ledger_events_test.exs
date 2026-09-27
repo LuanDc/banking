@@ -24,7 +24,7 @@ defmodule Ledger.Messaging.LedgerEventsTest do
              message_id: "evt-1",
              type: "LedgerBatchBooked",
              routing_key: "ledger.batch.booked",
-             payload: %{batch_id: "batch-1", correlation_id: "corr-1", entries: @payload_entries}
+             payload: %{batch_id: "batch-1", transfer_id: "corr-1", entries: @payload_entries}
            }
   end
 
@@ -42,7 +42,7 @@ defmodule Ledger.Messaging.LedgerEventsTest do
              routing_key: "ledger.batch.rejected",
              payload: %{
                batch_id: "batch-1",
-               correlation_id: "corr-1",
+               transfer_id: "corr-1",
                reason: "account_not_open",
                entries: @payload_entries
              }

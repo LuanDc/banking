@@ -46,7 +46,7 @@ defmodule Accounts.Messaging.LedgerEventsInbox do
   defp commands(payload, command_for) do
     payload["entries"]
     |> Enum.reject(&BankAccounts.bank_account?(&1["account_id"]))
-    |> Enum.map(&command_for.(&1, payload["correlation_id"]))
+    |> Enum.map(&command_for.(&1, payload["transfer_id"]))
   end
 
   defp booked(%{"type" => "debit"} = entry, transfer_id) do

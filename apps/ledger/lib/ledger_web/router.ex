@@ -32,6 +32,7 @@ defmodule LedgerWeb.Router do
     get "/ledger-accounts/:account_id", LedgerAccountController, :show
     get "/ledger-accounts/:account_id/balance", LedgerAccountController, :balance
     get "/ledger-accounts/:account_id/entries", LedgerAccountController, :entries
+    get "/batches", BatchController, :index
     get "/batches/:batch_id", BatchController, :show
     get "/trial-balance", LedgerAccountController, :trial_balance
   end

@@ -19,7 +19,7 @@ defmodule Ledger.Messaging.LedgerEvents do
   def for_event(%LedgerBatchBooked{} = event, metadata) do
     message("LedgerBatchBooked", "ledger.batch.booked", metadata, %{
       batch_id: event.batch_id,
-      correlation_id: event.transfer_id,
+      transfer_id: event.transfer_id,
       entries: Enum.map(event.entries, &entry/1)
     })
   end
@@ -27,7 +27,7 @@ defmodule Ledger.Messaging.LedgerEvents do
   def for_event(%LedgerBatchRejected{} = event, metadata) do
     message("LedgerBatchRejected", "ledger.batch.rejected", metadata, %{
       batch_id: event.batch_id,
-      correlation_id: event.transfer_id,
+      transfer_id: event.transfer_id,
       reason: Atom.to_string(event.reason),
       entries: Enum.map(event.entries, &entry/1)
     })

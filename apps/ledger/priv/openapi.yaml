@@ -103,6 +103,41 @@ paths:
               example:
                 errors: { code: invalid_query, detail: A query parameter is invalid. }
 
+  /api/batches:
+    get:
+      tags: [Batches]
+      operationId: listBatches
+      summary: List the booked batches of a transfer
+      description: |
+        Read from `ledger_entries`, oldest first. A batch settles a transfer and has an id of its
+        own (D17): today one settlement batch per transfer, and a reversal (D9) would be a second
+        one. A transfer whose batch was rejected, or not booked yet, returns an empty list.
+      parameters:
+        - name: transfer_id
+          in: query
+          required: true
+          description: The transfer the batches settle, as Accounts named it.
+          schema: { $ref: "#/components/schemas/Id" }
+      responses:
+        "200":
+          description: The transfer's booked batches.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Batch" }
+        "422":
+          description: "`transfer_id` is missing. `code` is `invalid_query`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                errors: { code: invalid_query, detail: A query parameter is invalid. }
+
   /api/batches/{batch_id}:
     parameters:
       - name: batch_id
@@ -202,19 +237,19 @@ components:
             - type: "null"
     StatementEntry:
       type: object
-      required: [batch_id, correlation_id, type, amount, booked_at]
+      required: [batch_id, transfer_id, type, amount, booked_at]
       properties:
         batch_id: { $ref: "#/components/schemas/Id" }
-        correlation_id: { $ref: "#/components/schemas/Id" }
+        transfer_id: { $ref: "#/components/schemas/Id" }
         type: { $ref: "#/components/schemas/EntryType" }
         amount: { $ref: "#/components/schemas/Cents" }
         booked_at: { $ref: "#/components/schemas/Timestamp" }
     Batch:
       type: object
-      required: [batch_id, correlation_id, booked_at, entries]
+      required: [batch_id, transfer_id, booked_at, entries]
       properties:
         batch_id: { $ref: "#/components/schemas/Id" }
-        correlation_id: { $ref: "#/components/schemas/Id" }
+        transfer_id: { $ref: "#/components/schemas/Id" }
         booked_at: { $ref: "#/components/schemas/Timestamp" }
         entries:
           type: array

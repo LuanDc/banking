@@ -1844,7 +1844,7 @@
               }
             },
             {
-              "name": "16 · Check the batch debits from and credits to",
+              "name": "16 · Check the settlement batch debits from and credits to",
               "event": [
                 {
                   "listen": "test",
@@ -1852,7 +1852,9 @@
                     "type": "text/javascript",
                     "exec": [
                       "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
-                      "const entries = pm.response.json().entries",
+                      "const [batch] = pm.response.json().data;",
+                      "pm.test(\"the batch names the transfer\", () => pm.expect(batch.transfer_id).to.eql(pm.collectionVariables.get(\"key\")));",
+                      "const entries = batch.entries",
                       "  .sort((a, b) => a.position - b.position)",
                       "  .map(({ account_id, type, amount }) => ({ account_id, type, amount }));",
                       "pm.test(\"debit from, credit to\", () => pm.expect(entries).to.eql([{ account_id: pm.collectionVariables.get(\"from\"), type: \"debit\", amount: 400 }, { account_id: pm.collectionVariables.get(\"to\"), type: \"credit\", amount: 400 }]));"
@@ -1863,7 +1865,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{ledger_url}}/api/batches/{{key}}"
+                "url": "{{ledger_url}}/api/batches?transfer_id={{key}}"
               }
             }
           ]
@@ -2855,7 +2857,8 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "pm.test(\"status is 404\", () => pm.response.to.have.status(404));"
+                      "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
+                      "pm.test(\"no batch settles the transfer\", () => pm.expect(pm.response.json().data).to.eql([]));"
                     ]
                   }
                 }
@@ -2863,7 +2866,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{ledger_url}}/api/batches/{{key}}"
+                "url": "{{ledger_url}}/api/batches?transfer_id={{key}}"
               }
             }
           ]
@@ -4751,7 +4754,39 @@
               }
             },
             {
-              "name": "14 · Replay BookTransactionBatch on ledger.commands",
+              "name": "14 · Wait until the settlement batch is booked",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// eventually: repeat this request until it passes, for up to 10 s.",
+                      "let json = {};",
+                      "try { json = pm.response.json(); } catch (e) {}",
+                      "const ok = (() => { try { return pm.response.code === 200 && json.data.length === 1; } catch (e) { return false; } })();",
+                      "const attempts = Number(pm.collectionVariables.get(\"attempts\") || 0);",
+                      "if (!ok && attempts < 50) {",
+                      "  pm.collectionVariables.set(\"attempts\", attempts + 1);",
+                      "  setTimeout(() => {}, 200);",
+                      "  postman.setNextRequest(pm.info.requestId);",
+                      "} else {",
+                      "  pm.collectionVariables.set(\"attempts\", 0);",
+                      "  pm.test(\"one batch settles the transfer\", () => pm.expect(ok, JSON.stringify(json)).to.be.true);",
+                      "  if (ok) pm.collectionVariables.set(\"batch_id\", json.data[0].batch_id);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{ledger_url}}/api/batches?transfer_id={{key}}"
+              }
+            },
+            {
+              "name": "15 · Replay BookTransactionBatch on ledger.commands",
               "event": [
                 {
                   "listen": "prerequest",
@@ -4759,7 +4794,7 @@
                     "type": "text/javascript",
                     "exec": [
                       "// Replays the message through the RabbitMQ management API, like E2E.Broker.",
-                      "const payload = { batch_id: pm.collectionVariables.get(\"key\"), correlation_id: pm.collectionVariables.get(\"key\"), entries: [{ account_id: pm.collectionVariables.get(\"from\"), type: \"debit\", amount: 400 }, { account_id: pm.collectionVariables.get(\"to\"), type: \"credit\", amount: 400 }] };",
+                      "const payload = { batch_id: pm.collectionVariables.get(\"batch_id\"), transfer_id: pm.collectionVariables.get(\"key\"), entries: [{ account_id: pm.collectionVariables.get(\"from\"), type: \"debit\", amount: 400 }, { account_id: pm.collectionVariables.get(\"to\"), type: \"credit\", amount: 400 }] };",
                       "pm.collectionVariables.set(\"replay_body\", JSON.stringify({",
                       "  properties: { type: \"BookTransactionBatch\", message_id: pm.variables.replaceIn(\"{{$guid}}\"), content_type: \"application/json\", delivery_mode: 2 },",
                       "  routing_key: \"ledger.commands\",",
@@ -4816,7 +4851,7 @@
               }
             },
             {
-              "name": "15 · Open account sentinel",
+              "name": "16 · Open account sentinel",
               "event": [
                 {
                   "listen": "test",
@@ -4850,7 +4885,7 @@
               }
             },
             {
-              "name": "16 · Activate sentinel",
+              "name": "17 · Activate sentinel",
               "event": [
                 {
                   "listen": "test",
@@ -4869,7 +4904,7 @@
               }
             },
             {
-              "name": "17 · Wait until sentinel is active",
+              "name": "18 · Wait until sentinel is active",
               "event": [
                 {
                   "listen": "test",
@@ -4900,7 +4935,7 @@
               }
             },
             {
-              "name": "18 · Deposit 1 into sentinel",
+              "name": "19 · Deposit 1 into sentinel",
               "event": [
                 {
                   "listen": "test",
@@ -4937,7 +4972,7 @@
               }
             },
             {
-              "name": "19 · Wait until sentinel has 1 available in Accounts",
+              "name": "20 · Wait until sentinel has 1 available in Accounts",
               "event": [
                 {
                   "listen": "test",
@@ -4968,7 +5003,7 @@
               }
             },
             {
-              "name": "20 · Wait until sentinel has a ledger balance of 1",
+              "name": "21 · Wait until sentinel has a ledger balance of 1",
               "event": [
                 {
                   "listen": "test",
@@ -4999,7 +5034,7 @@
               }
             },
             {
-              "name": "21 · Check from has 600 available in Accounts",
+              "name": "22 · Check from has 600 available in Accounts",
               "event": [
                 {
                   "listen": "test",
@@ -5019,7 +5054,7 @@
               }
             },
             {
-              "name": "22 · Check from has a ledger balance of 600",
+              "name": "23 · Check from has a ledger balance of 600",
               "event": [
                 {
                   "listen": "test",
@@ -5039,7 +5074,7 @@
               }
             },
             {
-              "name": "23 · Check to has 400 available in Accounts",
+              "name": "24 · Check to has 400 available in Accounts",
               "event": [
                 {
                   "listen": "test",
@@ -5059,7 +5094,7 @@
               }
             },
             {
-              "name": "24 · Check to has a ledger balance of 400",
+              "name": "25 · Check to has a ledger balance of 400",
               "event": [
                 {
                   "listen": "test",
@@ -5490,7 +5525,39 @@
               }
             },
             {
-              "name": "14 · Replay LedgerBatchBooked on ledger.events",
+              "name": "14 · Wait until the settlement batch is booked",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// eventually: repeat this request until it passes, for up to 10 s.",
+                      "let json = {};",
+                      "try { json = pm.response.json(); } catch (e) {}",
+                      "const ok = (() => { try { return pm.response.code === 200 && json.data.length === 1; } catch (e) { return false; } })();",
+                      "const attempts = Number(pm.collectionVariables.get(\"attempts\") || 0);",
+                      "if (!ok && attempts < 50) {",
+                      "  pm.collectionVariables.set(\"attempts\", attempts + 1);",
+                      "  setTimeout(() => {}, 200);",
+                      "  postman.setNextRequest(pm.info.requestId);",
+                      "} else {",
+                      "  pm.collectionVariables.set(\"attempts\", 0);",
+                      "  pm.test(\"one batch settles the transfer\", () => pm.expect(ok, JSON.stringify(json)).to.be.true);",
+                      "  if (ok) pm.collectionVariables.set(\"batch_id\", json.data[0].batch_id);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{ledger_url}}/api/batches?transfer_id={{key}}"
+              }
+            },
+            {
+              "name": "15 · Replay LedgerBatchBooked on ledger.events",
               "event": [
                 {
                   "listen": "prerequest",
@@ -5498,7 +5565,7 @@
                     "type": "text/javascript",
                     "exec": [
                       "// Replays the message through the RabbitMQ management API, like E2E.Broker.",
-                      "const payload = { batch_id: pm.collectionVariables.get(\"key\"), correlation_id: pm.collectionVariables.get(\"key\"), entries: [{ account_id: pm.collectionVariables.get(\"from\"), type: \"debit\", amount: 400 }, { account_id: pm.collectionVariables.get(\"to\"), type: \"credit\", amount: 400 }] };",
+                      "const payload = { batch_id: pm.collectionVariables.get(\"batch_id\"), transfer_id: pm.collectionVariables.get(\"key\"), entries: [{ account_id: pm.collectionVariables.get(\"from\"), type: \"debit\", amount: 400 }, { account_id: pm.collectionVariables.get(\"to\"), type: \"credit\", amount: 400 }] };",
                       "pm.collectionVariables.set(\"replay_body\", JSON.stringify({",
                       "  properties: { type: \"LedgerBatchBooked\", message_id: pm.variables.replaceIn(\"{{$guid}}\"), content_type: \"application/json\", delivery_mode: 2 },",
                       "  routing_key: \"ledger.batch.booked\",",
@@ -5555,7 +5622,7 @@
               }
             },
             {
-              "name": "15 · Open account sentinel",
+              "name": "16 · Open account sentinel",
               "event": [
                 {
                   "listen": "test",
@@ -5589,7 +5656,7 @@
               }
             },
             {
-              "name": "16 · Activate sentinel",
+              "name": "17 · Activate sentinel",
               "event": [
                 {
                   "listen": "test",
@@ -5608,7 +5675,7 @@
               }
             },
             {
-              "name": "17 · Wait until sentinel is active",
+              "name": "18 · Wait until sentinel is active",
               "event": [
                 {
                   "listen": "test",
@@ -5639,7 +5706,7 @@
               }
             },
             {
-              "name": "18 · Deposit 1 into sentinel",
+              "name": "19 · Deposit 1 into sentinel",
               "event": [
                 {
                   "listen": "test",
@@ -5676,7 +5743,7 @@
               }
             },
             {
-              "name": "19 · Wait until sentinel has 1 available in Accounts",
+              "name": "20 · Wait until sentinel has 1 available in Accounts",
               "event": [
                 {
                   "listen": "test",
@@ -5707,7 +5774,7 @@
               }
             },
             {
-              "name": "20 · Wait until sentinel has a ledger balance of 1",
+              "name": "21 · Wait until sentinel has a ledger balance of 1",
               "event": [
                 {
                   "listen": "test",
@@ -5738,7 +5805,7 @@
               }
             },
             {
-              "name": "21 · Check from has 600 available in Accounts",
+              "name": "22 · Check from has 600 available in Accounts",
               "event": [
                 {
                   "listen": "test",
@@ -5758,7 +5825,7 @@
               }
             },
             {
-              "name": "22 · Check from has a ledger balance of 600",
+              "name": "23 · Check from has a ledger balance of 600",
               "event": [
                 {
                   "listen": "test",
@@ -5778,7 +5845,7 @@
               }
             },
             {
-              "name": "23 · Check to has 400 available in Accounts",
+              "name": "24 · Check to has 400 available in Accounts",
               "event": [
                 {
                   "listen": "test",
@@ -5798,7 +5865,7 @@
               }
             },
             {
-              "name": "24 · Check to has a ledger balance of 400",
+              "name": "25 · Check to has a ledger balance of 400",
               "event": [
                 {
                   "listen": "test",
@@ -6229,7 +6296,39 @@
               }
             },
             {
-              "name": "14 · Replay a late LedgerBatchRejected on ledger.events",
+              "name": "14 · Wait until the settlement batch is booked",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// eventually: repeat this request until it passes, for up to 10 s.",
+                      "let json = {};",
+                      "try { json = pm.response.json(); } catch (e) {}",
+                      "const ok = (() => { try { return pm.response.code === 200 && json.data.length === 1; } catch (e) { return false; } })();",
+                      "const attempts = Number(pm.collectionVariables.get(\"attempts\") || 0);",
+                      "if (!ok && attempts < 50) {",
+                      "  pm.collectionVariables.set(\"attempts\", attempts + 1);",
+                      "  setTimeout(() => {}, 200);",
+                      "  postman.setNextRequest(pm.info.requestId);",
+                      "} else {",
+                      "  pm.collectionVariables.set(\"attempts\", 0);",
+                      "  pm.test(\"one batch settles the transfer\", () => pm.expect(ok, JSON.stringify(json)).to.be.true);",
+                      "  if (ok) pm.collectionVariables.set(\"batch_id\", json.data[0].batch_id);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": "{{ledger_url}}/api/batches?transfer_id={{key}}"
+              }
+            },
+            {
+              "name": "15 · Replay a late LedgerBatchRejected on ledger.events",
               "event": [
                 {
                   "listen": "prerequest",
@@ -6237,7 +6336,7 @@
                     "type": "text/javascript",
                     "exec": [
                       "// Replays the message through the RabbitMQ management API, like E2E.Broker.",
-                      "const payload = { batch_id: pm.collectionVariables.get(\"key\"), correlation_id: pm.collectionVariables.get(\"key\"), reason: \"unbalanced\", entries: [{ account_id: pm.collectionVariables.get(\"from\"), type: \"debit\", amount: 400 }, { account_id: pm.collectionVariables.get(\"to\"), type: \"credit\", amount: 400 }] };",
+                      "const payload = { batch_id: pm.collectionVariables.get(\"batch_id\"), transfer_id: pm.collectionVariables.get(\"key\"), reason: \"unbalanced\", entries: [{ account_id: pm.collectionVariables.get(\"from\"), type: \"debit\", amount: 400 }, { account_id: pm.collectionVariables.get(\"to\"), type: \"credit\", amount: 400 }] };",
                       "pm.collectionVariables.set(\"replay_body\", JSON.stringify({",
                       "  properties: { type: \"LedgerBatchRejected\", message_id: pm.variables.replaceIn(\"{{$guid}}\"), content_type: \"application/json\", delivery_mode: 2 },",
                       "  routing_key: \"ledger.batch.rejected\",",
@@ -6294,7 +6393,7 @@
               }
             },
             {
-              "name": "15 · Open account sentinel",
+              "name": "16 · Open account sentinel",
               "event": [
                 {
                   "listen": "test",
@@ -6328,7 +6427,7 @@
               }
             },
             {
-              "name": "16 · Activate sentinel",
+              "name": "17 · Activate sentinel",
               "event": [
                 {
                   "listen": "test",
@@ -6347,7 +6446,7 @@
               }
             },
             {
-              "name": "17 · Wait until sentinel is active",
+              "name": "18 · Wait until sentinel is active",
               "event": [
                 {
                   "listen": "test",
@@ -6378,7 +6477,7 @@
               }
             },
             {
-              "name": "18 · Deposit 1 into sentinel",
+              "name": "19 · Deposit 1 into sentinel",
               "event": [
                 {
                   "listen": "test",
@@ -6415,7 +6514,7 @@
               }
             },
             {
-              "name": "19 · Wait until sentinel has 1 available in Accounts",
+              "name": "20 · Wait until sentinel has 1 available in Accounts",
               "event": [
                 {
                   "listen": "test",
@@ -6446,7 +6545,7 @@
               }
             },
             {
-              "name": "20 · Wait until sentinel has a ledger balance of 1",
+              "name": "21 · Wait until sentinel has a ledger balance of 1",
               "event": [
                 {
                   "listen": "test",
@@ -6477,7 +6576,7 @@
               }
             },
             {
-              "name": "21 · Check from has 600 available in Accounts",
+              "name": "22 · Check from has 600 available in Accounts",
               "event": [
                 {
                   "listen": "test",
@@ -6497,7 +6596,7 @@
               }
             },
             {
-              "name": "22 · Check from has a ledger balance of 600",
+              "name": "23 · Check from has a ledger balance of 600",
               "event": [
                 {
                   "listen": "test",
@@ -6517,7 +6616,7 @@
               }
             },
             {
-              "name": "23 · Check to has 400 available in Accounts",
+              "name": "24 · Check to has 400 available in Accounts",
               "event": [
                 {
                   "listen": "test",
@@ -6537,7 +6636,7 @@
               }
             },
             {
-              "name": "24 · Check to has a ledger balance of 400",
+              "name": "25 · Check to has a ledger balance of 400",
               "event": [
                 {
                   "listen": "test",

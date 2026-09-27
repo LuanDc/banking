@@ -13,7 +13,7 @@ defmodule Accounts.Messaging.LedgerEventsConsumerTest do
     body =
       Jason.encode!(%{
         batch_id: "corr-1",
-        correlation_id: "corr-1",
+        transfer_id: "corr-1",
         entries: [%{account_id: Ecto.UUID.generate(), type: "debit", amount: 400}]
       })
 

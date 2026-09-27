@@ -4,6 +4,7 @@ defmodule Accounts.Messaging.LedgerCommandsTest do
   alias Accounts.Events.CreditAuthorized
   alias Accounts.Events.CustomerAccountClosed
   alias Accounts.Events.CustomerAccountOpened
+  alias Accounts.Messaging.BatchId
   alias Accounts.Messaging.LedgerCommands
 
   @metadata %{event_id: "evt-1"}
@@ -36,14 +37,14 @@ defmodule Accounts.Messaging.LedgerCommandsTest do
       from_account_id: "acc-1"
     }
 
-    # README, D4: the batch id derives from the transfer id, so a redelivered command hits a
-    # batch already decided.
+    # README, D17: the batch has an id of its own, derived from the transfer's, so a redelivered
+    # command hits a batch already decided (D4).
     assert LedgerCommands.for_event(event, @metadata) == %{
              message_id: "evt-1",
              type: "BookTransactionBatch",
              payload: %{
-               batch_id: "corr-1",
-               correlation_id: "corr-1",
+               batch_id: BatchId.settlement("corr-1"),
+               transfer_id: "corr-1",
                entries: [
                  %{account_id: "acc-1", type: "debit", amount: 400},
                  %{account_id: "acc-2", type: "credit", amount: 400}

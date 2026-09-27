@@ -15,18 +15,27 @@ defmodule E2E.Stories.RedeliveryTest do
     settled_transfer(key, "completed")
     eventually(fn -> assert_balance(to, 400) end)
 
+    # The batch that settled it, to replay the very messages that booked it (docs, D17).
+    batch_id =
+      eventually(fn ->
+        assert %{status: 200, body: %{"data" => [%{"batch_id" => batch_id}]}} =
+                 Ledger.batches(key)
+
+        batch_id
+      end)
+
     entries = [
       %{account_id: from, type: "debit", amount: 400},
       %{account_id: to, type: "credit", amount: 400}
     ]
 
-    %{from: from, to: to, key: key, entries: entries}
+    %{from: from, to: to, key: key, batch_id: batch_id, entries: entries}
   end
 
   test "a redelivered BookTransactionBatch books nothing twice", context do
     Broker.publish_command("BookTransactionBatch", %{
-      batch_id: context.key,
-      correlation_id: context.key,
+      batch_id: context.batch_id,
+      transfer_id: context.key,
       entries: context.entries
     })
 
@@ -38,8 +47,8 @@ defmodule E2E.Stories.RedeliveryTest do
 
   test "a redelivered LedgerBatchBooked settles nothing twice", context do
     Broker.publish_event("LedgerBatchBooked", "ledger.batch.booked", %{
-      batch_id: context.key,
-      correlation_id: context.key,
+      batch_id: context.batch_id,
+      transfer_id: context.key,
       entries: context.entries
     })
 
@@ -51,8 +60,8 @@ defmodule E2E.Stories.RedeliveryTest do
 
   test "a late LedgerBatchRejected for a booked batch gives nothing back", context do
     Broker.publish_event("LedgerBatchRejected", "ledger.batch.rejected", %{
-      batch_id: context.key,
-      correlation_id: context.key,
+      batch_id: context.batch_id,
+      transfer_id: context.key,
       reason: "unbalanced",
       entries: context.entries
     })

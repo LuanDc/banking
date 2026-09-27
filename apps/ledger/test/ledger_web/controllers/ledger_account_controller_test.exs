@@ -58,6 +58,36 @@ defmodule LedgerWeb.LedgerAccountControllerTest do
     assert %{"entries" => [_debit, _credit]} = assert_response_schema(conn, 200)
   end
 
+  test "GET /api/batches?transfer_id=", %{conn: conn} do
+    transfer_id = Ecto.UUID.generate()
+    batch_id = Ecto.UUID.generate()
+
+    insert(:statement_entry,
+      batch_id: batch_id,
+      transfer_id: transfer_id,
+      position: 0,
+      type: :debit
+    )
+
+    insert(:statement_entry,
+      batch_id: batch_id,
+      transfer_id: transfer_id,
+      position: 1,
+      type: :credit
+    )
+
+    conn = get(conn, ~p"/api/batches?transfer_id=#{transfer_id}")
+
+    assert %{"data" => [%{"batch_id" => ^batch_id, "transfer_id" => ^transfer_id}]} =
+             assert_response_schema(conn, 200)
+  end
+
+  test "GET /api/batches without a transfer_id", %{conn: conn} do
+    conn = get(conn, ~p"/api/batches")
+
+    assert %{"errors" => %{"code" => "invalid_query"}} = assert_response_schema(conn, 422)
+  end
+
   test "GET /api/trial-balance", %{conn: conn} do
     insert(:account_balance, debit_total: 1_000, credit_total: 0)
     insert(:account_balance, debit_total: 0, credit_total: 1_000)

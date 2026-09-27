@@ -153,6 +153,7 @@ browse it in Swagger UI at http://localhost:8080 once `docker compose up -d` is 
 | 🔎 | `GET /api/ledger-accounts/{id}` | `open` or `closed` |
 | 💰 | `GET /api/ledger-accounts/{id}/balance` | debit total, credit total, balance |
 | 📜 | `GET /api/ledger-accounts/{id}/entries?from=&to=&limit=&after=` | Statement, newest first, paginated |
+| 🧾 | `GET /api/batches?transfer_id=` | The booked batches that settle a transfer (D17) |
 | 📦 | `GET /api/batches/{batch_id}` | A booked batch and its entries |
 | ⚖️ | `GET /api/trial-balance` | Sum of every debit and every credit |
 
@@ -163,7 +164,7 @@ Errors: `404 not_found`, and `422 invalid_query` for a bad filter or cursor.
 ### 🟨 `TransactionBatch`
 
 [`lib/ledger/aggregates/transaction_batch.ex`](lib/ledger/aggregates/transaction_batch.ex): one stream per `batch_id`,
-which is the transfer's `transfer_id`. So a redelivered command finds the batch already
+derived from the transfer's `transfer_id` (`UUIDv5`, D17). So a redelivered command finds the batch already
 decided and books nothing (D4).
 
 ```mermaid

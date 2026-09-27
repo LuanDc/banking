@@ -15,8 +15,9 @@ defmodule E2E.Stories.TransferTest do
       assert_balance(to, 400)
     end)
 
-    # The batch id is the transfer's correlation id (docs, D4).
-    assert %{status: 200, body: %{"entries" => entries}} = Ledger.batch(key)
+    # The settlement batch has an id of its own and names the transfer it settles (docs, D17).
+    assert %{status: 200, body: %{"data" => [%{"transfer_id" => ^key, "entries" => entries}]}} =
+             Ledger.batches(key)
 
     assert [
              %{"account_id" => ^from, "type" => "debit", "amount" => 400},
@@ -54,7 +55,7 @@ defmodule E2E.Stories.TransferTest do
                Accounts.reservations(from)
     end)
 
-    assert %{status: 404} = Ledger.batch(key)
+    assert %{status: 200, body: %{"data" => []}} = Ledger.batches(key)
   end
 
   test "a transfer above the available balance is refused at once" do

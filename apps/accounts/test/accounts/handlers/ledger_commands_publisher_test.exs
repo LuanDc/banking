@@ -40,7 +40,7 @@ defmodule Accounts.Handlers.LedgerCommandsPublisherTest do
 
   test "publishes the batch that books an authorized credit" do
     expect(PublisherMock, :publish, fn message ->
-      assert %{type: "BookTransactionBatch", payload: %{batch_id: "corr-1"}} = message
+      assert %{type: "BookTransactionBatch", payload: %{transfer_id: "corr-1"}} = message
       :ok
     end)
 
