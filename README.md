@@ -91,34 +91,125 @@ transfers, compensation, closing, and redelivered messages. Each one checks that
 | Browse what is covered | [Stories](apps/e2e/README.md#stories) |
 | Replay them by hand in Postman | [Replay them in Postman](apps/e2e/README.md#replay-them-in-postman) |
 
-## Quick start
+## Run it locally
 
-> 🐳 **Only Docker is needed.** No Elixir, Postgres or RabbitMQ on your machine.
+> 🐳 **Only Docker is needed.** Elixir, Postgres, RabbitMQ and Node all run in containers, so
+> nothing else goes on your machine.
+
+### What you need
+
+| | Tool | Why |
+| --- | --- | --- |
+| ✅ | [Docker](https://docs.docker.com/get-docker/) (Engine 25+ or Docker Desktop) | runs everything |
+| ⭐ | [VS Code](https://code.visualstudio.com/) + [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension | the editor inside the container (optional) |
+
+### Open it in the dev container
+
+1. Clone the repo and open the folder in VS Code.
+2. When VS Code offers **Reopen in Container**, click it. You can also run it from the command
+   palette (`F1` → *Dev Containers: Reopen in Container*).
+3. Wait for the first build. It builds the dev image and compiles both services, so it takes a
+   few minutes. Later starts take seconds.
+4. Once the window reopens, the terminal is inside the `workspace` container, in `/workspace`,
+   and both services are already running.
+
+Check that everything is up:
 
 ```bash
-docker compose up -d --wait         # Postgres, RabbitMQ, Swagger UI, ledger and accounts
+curl -s http://ledger:4001/api/trial-balance      # {"balanced":true, ...}
 ```
 
-The first run builds the dev image and compiles both services, so give it a few minutes. Each
-service runs `mix setup` on start, so the databases, the event stores and the ledger's seeds are
-ready when `--wait` returns.
+### What starts
 
-| I want to… | How |
+```mermaid
+flowchart LR
+    subgraph HOST["💻 your machine"]
+        VS["VS Code"]
+        BR["browser / Postman"]
+    end
+
+    subgraph DC["🐳 docker compose · project banking"]
+        WS["workspace<br/>editor, tests, e2e"]
+        ACC["accounts :4000"]
+        LED["ledger :4001"]
+        PG[("postgres :5432")]
+        MQ[["rabbitmq :5672 · :15672"]]
+        SW["swagger-ui :8080"]
+    end
+
+    VS -.attached.-> WS
+    BR -->|localhost ports| ACC & LED & SW & MQ
+    WS --> ACC & LED & PG & MQ
+    ACC --> PG & MQ
+    LED --> PG & MQ
+
+    classDef svc fill:#FFE082,stroke:#C8A300,color:#14202B
+    classDef infra fill:#FFCC80,stroke:#E65100,color:#14202B
+    class ACC,LED svc
+    class PG,MQ infra
+```
+
+- **ledger** starts first. Its `mix setup` creates the databases and seeds the bank's
+  `pix-settlement` account, and it declares the RabbitMQ queue that accounts sends commands to.
+- **accounts** starts once the ledger is healthy.
+- Both run from the mounted source code, so an edit reloads on the next request.
+- Each app keeps its `deps`, `_build` and dialyzer PLTs in Docker volumes, so they never mix
+  with a build on your machine.
+
+The same ports are published on your machine:
+
+| Service | From your machine | From the workspace container |
+| --- | --- | --- |
+| 🏦 accounts API | http://localhost:4000/api | http://accounts:4000/api |
+| 📒 ledger API | http://localhost:4001/api | http://ledger:4001/api |
+| 📖 Swagger UI (both specs) | http://localhost:8080 | · |
+| 🐇 RabbitMQ management | http://localhost:15672 (`banking` / `banking`) | http://rabbitmq:15672 |
+| 🐘 Postgres | `localhost:5432` (`postgres` / `postgres`) | `postgres:5432` |
+
+### Work inside the container
+
+The workspace container already points `PGHOST`, `RABBITMQ_URL`, `ACCOUNTS_URL` and `LEDGER_URL`
+at the other containers, so the usual commands just work:
+
+| I want to… | Run |
 | --- | --- |
-| 💻 Code, test and run the e2e stories in an editor | Open the repo in VS Code and pick **Reopen in Container** ([`.devcontainer/`](.devcontainer/devcontainer.json)) |
-| 🐚 Get the same shell without VS Code | `docker compose -f docker-compose.yml -f .devcontainer/compose.yaml up -d`, then `... exec workspace bash` |
-| 📜 Follow the services' logs | `docker compose logs -f accounts ledger` |
-| 🧹 Start from scratch | `docker compose down -v` |
+| 🧪 Run a service's tests | `cd apps/accounts && mix test` (or `apps/ledger`) |
+| 🔍 Run the quality checks | `mix quality` in the service's folder |
+| 🎬 Run the e2e stories | `cd apps/e2e && mix test` |
+| 📮 Replay the Postman collection | `newman run apps/e2e/postman/banking.postman_collection.json -e apps/e2e/postman/devcontainer.postman_environment.json` |
+| 📐 Lint an OpenAPI spec | `npx @redocly/cli@1 lint apps/accounts/priv/openapi.yaml` |
+| 🐘 Open a SQL shell | `psql -U postgres -d accounts_dev` (password `postgres`) |
 
-Each service's [run in dev](apps/accounts/README.md#run-in-dev) guide has the details, including
-how to run the services on the host with your own Elixir.
+The services' logs don't go to this terminal. Follow them from your machine with
+`docker compose logs -f accounts ledger`.
 
-| Service | URL |
+### Without VS Code
+
+The same containers run with Docker alone. From the repo root:
+
+```bash
+# The whole stack plus the workspace container
+docker compose -f docker-compose.yml -f .devcontainer/compose.yaml up -d --wait
+
+# A shell inside it, for the commands above
+docker compose -f docker-compose.yml -f .devcontainer/compose.yaml exec workspace bash
+```
+
+To run only the services and use them from your machine, `docker compose up -d --wait` is
+enough.
+
+### Stop, reset, troubleshoot
+
+| Situation | Do |
 | --- | --- |
-| 🏦 accounts API | http://localhost:4000/api |
-| 📒 ledger API | http://localhost:4001/api |
-| 📖 Swagger UI (both specs) | http://localhost:8080 |
-| 🐇 RabbitMQ management | http://localhost:15672 (`banking` / `banking`) |
+| ⏸️ Stop everything, keep the data | `docker compose down` (VS Code also stops it when you close the window) |
+| 🧹 Start from scratch: data, deps and builds | `docker compose down -v` |
+| 🐢 `--wait` or VS Code seems stuck on the first run | it is compiling: `docker compose logs -f ledger accounts` |
+| 🚫 A port is already in use (5432, 5672, 4000…) | stop whatever is using it on your machine, e.g. a local Postgres |
+| 🔁 Changed the Dockerfile or `devcontainer.json` | *Dev Containers: Rebuild Container* |
+
+Prefer your own Elixir on the host? Each service's [run in dev](apps/accounts/README.md#run-in-dev)
+guide shows how to run just the infrastructure in Docker.
 
 ## Repository layout
 
