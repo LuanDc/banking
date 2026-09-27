@@ -28,8 +28,11 @@ defmodule E2E.Stories.AccountLifecycleTest do
              Accounts.transition(account_id, "close")
 
     key = new_key("transfer")
-    assert %{status: 202} = Accounts.transfer(account_id, other, 300, key)
-    settled_transfer(key, "completed")
+
+    assert %{status: 202, body: %{"transfer_id" => transfer_id}} =
+             Accounts.transfer(account_id, other, 300, key)
+
+    settled_transfer(transfer_id, "completed")
     eventually(fn -> assert_balance(account_id, 0) end)
 
     assert %{status: 204} = Accounts.transition(account_id, "close")

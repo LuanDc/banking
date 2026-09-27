@@ -15,27 +15,41 @@ defmodule AccountsWeb.TransferControllerTest do
   @moduletag :integration
 
   describe "POST /api/transfers" do
-    test "reserves the amount and starts the saga", %{conn: conn} do
+    test "reserves the amount and names the transfer with an id of its own", %{conn: conn} do
       from = active_account(balance: 1_000)
       key = Ecto.UUID.generate()
 
       conn =
         transfer(conn, key, %{from_account_id: from, to_account_id: active_account(), amount: 400})
 
-      assert %{"correlation_id" => ^key, "status" => "pending"} =
+      assert %{"transfer_id" => transfer_id, "status" => "pending"} =
                assert_response_schema(conn, 202)
 
-      assert get_resp_header(conn, "location") == ["/api/transfers/#{key}"]
+      assert transfer_id != key
+      assert get_resp_header(conn, "location") == ["/api/transfers/#{transfer_id}"]
     end
 
-    test "a repeated key starts nothing new", %{conn: conn} do
+    test "a repeated key answers with the same transfer", %{conn: conn} do
+      from = active_account(balance: 1_000)
+      key = Ecto.UUID.generate()
+      body = %{from_account_id: from, to_account_id: active_account(), amount: 400}
+
+      %{"transfer_id" => transfer_id} = json_response(transfer(build_conn(), key, body), 202)
+
+      assert %{"transfer_id" => ^transfer_id} =
+               assert_response_schema(transfer(conn, key, body), 202)
+    end
+
+    test "a repeated key with another body is refused", %{conn: conn} do
       from = active_account(balance: 1_000)
       key = Ecto.UUID.generate()
       body = %{from_account_id: from, to_account_id: active_account(), amount: 400}
 
       transfer(build_conn(), key, body)
+      conn = transfer(conn, key, %{body | amount: 500})
 
-      assert %{"correlation_id" => ^key} = assert_response_schema(transfer(conn, key, body), 202)
+      assert %{"errors" => %{"code" => "idempotency_key_reused"}} =
+               assert_response_schema(conn, 422)
     end
 
     test "returns 422 with the reservation's rejection", %{conn: conn} do
@@ -59,12 +73,13 @@ defmodule AccountsWeb.TransferControllerTest do
       conn =
         post(conn, ~p"/api/transfers", %{from_account_id: "a", to_account_id: "b", amount: 1})
 
-      assert %{"errors" => %{"code" => "validation_failed", "fields" => %{"transfer_id" => _}}} =
-               assert_response_schema(conn, 422)
+      assert %{
+               "errors" => %{"code" => "validation_failed", "fields" => %{"idempotency_key" => _}}
+             } = assert_response_schema(conn, 422)
     end
   end
 
-  describe "GET /api/transfers/:correlation_id" do
+  describe "GET /api/transfers/:transfer_id" do
     test "returns the transfer as it stands", %{conn: conn} do
       reservation = insert(:reservation, to_account_id: Ecto.UUID.generate())
 
@@ -86,7 +101,8 @@ defmodule AccountsWeb.TransferControllerTest do
 
       conn = deposit(conn, account, %{amount: 1_000})
 
-      assert %{"account_id" => ^account, "amount" => 1_000} = assert_response_schema(conn, 202)
+      assert %{"transfer_id" => _, "account_id" => ^account, "amount" => 1_000} =
+               assert_response_schema(conn, 202)
     end
 
     test "returns 422 when the account may not receive money", %{conn: conn} do

@@ -4,8 +4,6 @@ defmodule AccountsWeb.ReservationJSON do
   end
 
   defp data(reservation) do
-    reservation
-    |> Map.take([:amount, :status, :reason, :reserved_at, :settled_at])
-    |> Map.put(:correlation_id, reservation.transfer_id)
+    Map.take(reservation, [:transfer_id, :amount, :status, :reason, :reserved_at, :settled_at])
   end
 end

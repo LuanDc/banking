@@ -437,7 +437,8 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));"
+                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));",
+                      "pm.collectionVariables.set(\"transfer_id\", pm.response.json().transfer_id);"
                     ]
                   }
                 }
@@ -494,7 +495,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{accounts_url}}/api/transfers/{{key}}"
+                "url": "{{accounts_url}}/api/transfers/{{transfer_id}}"
               }
             },
             {
@@ -1659,7 +1660,9 @@
                     "type": "text/javascript",
                     "exec": [
                       "pm.test(\"status is 202\", () => pm.response.to.have.status(202));",
-                      "pm.test(\"starts pending\", () => pm.expect(pm.response.json().status).to.eql(\"pending\"));"
+                      "pm.test(\"starts pending\", () => pm.expect(pm.response.json().status).to.eql(\"pending\"));",
+                      "pm.test(\"names the transfer with an id of its own\", () => pm.expect(pm.response.json().transfer_id).to.not.eql(pm.collectionVariables.get(\"key\")));",
+                      "pm.collectionVariables.set(\"transfer_id\", pm.response.json().transfer_id);"
                     ]
                   }
                 }
@@ -1716,7 +1719,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{accounts_url}}/api/transfers/{{key}}"
+                "url": "{{accounts_url}}/api/transfers/{{transfer_id}}"
               }
             },
             {
@@ -1853,7 +1856,7 @@
                     "exec": [
                       "pm.test(\"status is 200\", () => pm.response.to.have.status(200));",
                       "const [batch] = pm.response.json().data;",
-                      "pm.test(\"the batch names the transfer\", () => pm.expect(batch.transfer_id).to.eql(pm.collectionVariables.get(\"key\")));",
+                      "pm.test(\"the batch names the transfer\", () => pm.expect(batch.transfer_id).to.eql(pm.collectionVariables.get(\"transfer_id\")));",
                       "const entries = batch.entries",
                       "  .sort((a, b) => a.position - b.position)",
                       "  .map(({ account_id, type, amount }) => ({ account_id, type, amount }));",
@@ -1865,7 +1868,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{ledger_url}}/api/batches?transfer_id={{key}}"
+                "url": "{{ledger_url}}/api/batches?transfer_id={{transfer_id}}"
               }
             }
           ]
@@ -2190,7 +2193,8 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));"
+                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));",
+                      "pm.collectionVariables.set(\"transfer_id\", pm.response.json().transfer_id);"
                     ]
                   }
                 }
@@ -2247,7 +2251,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{accounts_url}}/api/transfers/{{key}}"
+                "url": "{{accounts_url}}/api/transfers/{{transfer_id}}"
               }
             },
             {
@@ -2634,7 +2638,8 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));"
+                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));",
+                      "pm.collectionVariables.set(\"transfer_id\", pm.response.json().transfer_id);"
                     ]
                   }
                 }
@@ -2691,7 +2696,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{accounts_url}}/api/transfers/{{key}}"
+                "url": "{{accounts_url}}/api/transfers/{{transfer_id}}"
               }
             },
             {
@@ -2866,7 +2871,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{ledger_url}}/api/batches?transfer_id={{key}}"
+                "url": "{{ledger_url}}/api/batches?transfer_id={{transfer_id}}"
               }
             }
           ]
@@ -3189,7 +3194,7 @@
               }
             },
             {
-              "name": "11 · Wait until the transfer is failed (insufficient_balance)",
+              "name": "11 · Wait until from shows the rejected reservation (insufficient_balance)",
               "event": [
                 {
                   "listen": "test",
@@ -3199,7 +3204,7 @@
                       "// eventually: repeat this request until it passes, for up to 10 s.",
                       "let json = {};",
                       "try { json = pm.response.json(); } catch (e) {}",
-                      "const ok = (() => { try { return pm.response.code === 200 && json.status === \"failed\" && json.reason === \"insufficient_balance\"; } catch (e) { return false; } })();",
+                      "const ok = (() => { try { return pm.response.code === 200 && json.data.length === 1 && json.data[0].status === \"rejected\" && json.data[0].reason === \"insufficient_balance\"; } catch (e) { return false; } })();",
                       "const attempts = Number(pm.collectionVariables.get(\"attempts\") || 0);",
                       "if (!ok && attempts < 50) {",
                       "  pm.collectionVariables.set(\"attempts\", attempts + 1);",
@@ -3207,7 +3212,7 @@
                       "  postman.setNextRequest(pm.info.requestId);",
                       "} else {",
                       "  pm.collectionVariables.set(\"attempts\", 0);",
-                      "  pm.test(\"the transfer is failed with insufficient_balance\", () => pm.expect(ok, JSON.stringify(json)).to.be.true);",
+                      "  pm.test(\"the refusal is recorded on from's reservation\", () => pm.expect(ok, JSON.stringify(json)).to.be.true);",
                       "}"
                     ]
                   }
@@ -3216,7 +3221,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{accounts_url}}/api/transfers/{{key}}"
+                "url": "{{accounts_url}}/api/accounts/{{from}}/reservations"
               }
             },
             {
@@ -3900,7 +3905,8 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));"
+                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));",
+                      "pm.collectionVariables.set(\"transfer_id\", pm.response.json().transfer_id);"
                     ]
                   }
                 }
@@ -3937,7 +3943,8 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));"
+                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));",
+                      "pm.test(\"names the same transfer\", () => pm.expect(pm.response.json().transfer_id).to.eql(pm.collectionVariables.get(\"transfer_id\")));"
                     ]
                   }
                 }
@@ -3994,7 +4001,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{accounts_url}}/api/transfers/{{key}}"
+                "url": "{{accounts_url}}/api/transfers/{{transfer_id}}"
               }
             },
             {
@@ -4631,7 +4638,8 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));"
+                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));",
+                      "pm.collectionVariables.set(\"transfer_id\", pm.response.json().transfer_id);"
                     ]
                   }
                 }
@@ -4688,7 +4696,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{accounts_url}}/api/transfers/{{key}}"
+                "url": "{{accounts_url}}/api/transfers/{{transfer_id}}"
               }
             },
             {
@@ -4782,7 +4790,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{ledger_url}}/api/batches?transfer_id={{key}}"
+                "url": "{{ledger_url}}/api/batches?transfer_id={{transfer_id}}"
               }
             },
             {
@@ -4794,7 +4802,7 @@
                     "type": "text/javascript",
                     "exec": [
                       "// Replays the message through the RabbitMQ management API, like E2E.Broker.",
-                      "const payload = { batch_id: pm.collectionVariables.get(\"batch_id\"), transfer_id: pm.collectionVariables.get(\"key\"), entries: [{ account_id: pm.collectionVariables.get(\"from\"), type: \"debit\", amount: 400 }, { account_id: pm.collectionVariables.get(\"to\"), type: \"credit\", amount: 400 }] };",
+                      "const payload = { batch_id: pm.collectionVariables.get(\"batch_id\"), transfer_id: pm.collectionVariables.get(\"transfer_id\"), entries: [{ account_id: pm.collectionVariables.get(\"from\"), type: \"debit\", amount: 400 }, { account_id: pm.collectionVariables.get(\"to\"), type: \"credit\", amount: 400 }] };",
                       "pm.collectionVariables.set(\"replay_body\", JSON.stringify({",
                       "  properties: { type: \"BookTransactionBatch\", message_id: pm.variables.replaceIn(\"{{$guid}}\"), content_type: \"application/json\", delivery_mode: 2 },",
                       "  routing_key: \"ledger.commands\",",
@@ -5402,7 +5410,8 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));"
+                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));",
+                      "pm.collectionVariables.set(\"transfer_id\", pm.response.json().transfer_id);"
                     ]
                   }
                 }
@@ -5459,7 +5468,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{accounts_url}}/api/transfers/{{key}}"
+                "url": "{{accounts_url}}/api/transfers/{{transfer_id}}"
               }
             },
             {
@@ -5553,7 +5562,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{ledger_url}}/api/batches?transfer_id={{key}}"
+                "url": "{{ledger_url}}/api/batches?transfer_id={{transfer_id}}"
               }
             },
             {
@@ -5565,7 +5574,7 @@
                     "type": "text/javascript",
                     "exec": [
                       "// Replays the message through the RabbitMQ management API, like E2E.Broker.",
-                      "const payload = { batch_id: pm.collectionVariables.get(\"batch_id\"), transfer_id: pm.collectionVariables.get(\"key\"), entries: [{ account_id: pm.collectionVariables.get(\"from\"), type: \"debit\", amount: 400 }, { account_id: pm.collectionVariables.get(\"to\"), type: \"credit\", amount: 400 }] };",
+                      "const payload = { batch_id: pm.collectionVariables.get(\"batch_id\"), transfer_id: pm.collectionVariables.get(\"transfer_id\"), entries: [{ account_id: pm.collectionVariables.get(\"from\"), type: \"debit\", amount: 400 }, { account_id: pm.collectionVariables.get(\"to\"), type: \"credit\", amount: 400 }] };",
                       "pm.collectionVariables.set(\"replay_body\", JSON.stringify({",
                       "  properties: { type: \"LedgerBatchBooked\", message_id: pm.variables.replaceIn(\"{{$guid}}\"), content_type: \"application/json\", delivery_mode: 2 },",
                       "  routing_key: \"ledger.batch.booked\",",
@@ -6173,7 +6182,8 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));"
+                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));",
+                      "pm.collectionVariables.set(\"transfer_id\", pm.response.json().transfer_id);"
                     ]
                   }
                 }
@@ -6230,7 +6240,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{accounts_url}}/api/transfers/{{key}}"
+                "url": "{{accounts_url}}/api/transfers/{{transfer_id}}"
               }
             },
             {
@@ -6324,7 +6334,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{ledger_url}}/api/batches?transfer_id={{key}}"
+                "url": "{{ledger_url}}/api/batches?transfer_id={{transfer_id}}"
               }
             },
             {
@@ -6336,7 +6346,7 @@
                     "type": "text/javascript",
                     "exec": [
                       "// Replays the message through the RabbitMQ management API, like E2E.Broker.",
-                      "const payload = { batch_id: pm.collectionVariables.get(\"batch_id\"), transfer_id: pm.collectionVariables.get(\"key\"), reason: \"unbalanced\", entries: [{ account_id: pm.collectionVariables.get(\"from\"), type: \"debit\", amount: 400 }, { account_id: pm.collectionVariables.get(\"to\"), type: \"credit\", amount: 400 }] };",
+                      "const payload = { batch_id: pm.collectionVariables.get(\"batch_id\"), transfer_id: pm.collectionVariables.get(\"transfer_id\"), reason: \"unbalanced\", entries: [{ account_id: pm.collectionVariables.get(\"from\"), type: \"debit\", amount: 400 }, { account_id: pm.collectionVariables.get(\"to\"), type: \"credit\", amount: 400 }] };",
                       "pm.collectionVariables.set(\"replay_body\", JSON.stringify({",
                       "  properties: { type: \"LedgerBatchRejected\", message_id: pm.variables.replaceIn(\"{{$guid}}\"), content_type: \"application/json\", delivery_mode: 2 },",
                       "  routing_key: \"ledger.batch.rejected\",",
@@ -6950,7 +6960,8 @@
                   "script": {
                     "type": "text/javascript",
                     "exec": [
-                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));"
+                      "pm.test(\"status is 202\", () => pm.response.to.have.status(202));",
+                      "pm.collectionVariables.set(\"transfer_id\", pm.response.json().transfer_id);"
                     ]
                   }
                 }
@@ -7007,7 +7018,7 @@
               "request": {
                 "method": "GET",
                 "header": [],
-                "url": "{{accounts_url}}/api/transfers/{{key}}"
+                "url": "{{accounts_url}}/api/transfers/{{transfer_id}}"
               }
             },
             {

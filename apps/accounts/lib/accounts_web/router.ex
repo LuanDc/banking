@@ -38,7 +38,7 @@ defmodule AccountsWeb.Router do
     post "/accounts/:account_id/deposits", TransferController, :deposit
 
     post "/transfers", TransferController, :create
-    get "/transfers/:correlation_id", TransferController, :show
+    get "/transfers/:transfer_id", TransferController, :show
 
     post "/accounts/:account_id/activate", LifecycleController, :activate
     post "/accounts/:account_id/block", LifecycleController, :block

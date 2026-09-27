@@ -170,11 +170,12 @@ defmodule E2E.Stories.MyStoryTest do
   test "what the customer sees happen" do
     from = funded_account(1_000)          # open + activate + PIX, waits until it lands
     to = active_account()
-    key = new_key("transfer")
+    key = new_key("transfer")             # the Idempotency-Key, for retries only
 
-    assert %{status: 202} = Accounts.transfer(from, to, 400, key)
+    assert %{status: 202, body: %{"transfer_id" => transfer_id}} =
+             Accounts.transfer(from, to, 400, key)
 
-    settled_transfer(key, "completed")    # eventually, through the saga
+    settled_transfer(transfer_id, "completed")    # eventually, through the saga
     eventually(fn -> assert_balance(from, 600) end)
   end
 end
@@ -299,9 +300,10 @@ At the end, the run fails unless every one of these holds:
 | 📭 No message was dead-lettered | the `*.dead` queues, before and after |
 | ❓ Every outcome is known | what timed out is read again once the queues are empty |
 
-A client-side error (a timeout, an exhausted pool) may still have reached the service. Its
-`Idempotency-Key` is looked up once the queues are empty, as a real client would. The report
-shows how many `reached the service anyway`. An exhausted client pool is the generator's limit,
+A client-side error (a timeout, an exhausted pool) may still have reached the service. Once the
+queues are empty, the request is sent again with the same `Idempotency-Key`, as a real client
+would: the service answers with the transfer it already started, or starts it then (D17). The
+report shows how many were `settled by a retry with the same key`. An exhausted client pool is the generator's limit,
 not the services': raise `--pool-size` or `--poll`.
 
 ### Reading a report

@@ -117,10 +117,12 @@ curl -X POST localhost:4000/api/accounts/$B/activate
 curl localhost:4000/api/accounts/$A/deposits -H 'content-type: application/json' \
   -H 'Idempotency-Key: dep-1' -d '{"amount":1000}'
 
-# Transfer R$ 4.00 from A to B, then check the outcome
-curl localhost:4000/api/transfers -H 'content-type: application/json' \
-  -H 'Idempotency-Key: tr-1' -d "{\"from_account_id\":\"$A\",\"to_account_id\":\"$B\",\"amount\":400}"
-curl localhost:4000/api/transfers/tr-1     # pending → completed
+# Transfer R$ 4.00 from A to B, then check the outcome. The key only answers a retry;
+# the transfer has an id of its own (D17)
+T=$(curl -s localhost:4000/api/transfers -H 'content-type: application/json' \
+      -H 'Idempotency-Key: tr-1' -d "{\"from_account_id\":\"$A\",\"to_account_id\":\"$B\",\"amount\":400}" \
+      | jq -r .transfer_id)
+curl localhost:4000/api/transfers/$T       # pending → completed
 ```
 
 💡 Freeze B (`POST /api/accounts/$B/freeze` with `{"reason":"fraud"}`) and transfer again.
@@ -172,8 +174,8 @@ browse it in Swagger UI at http://localhost:8080 once `docker compose up -d` is 
 | 🔎 | `GET /api/accounts?customer_id=` · `GET /api/accounts/{id}` | Status and available balance |
 | 📜 | `GET /api/accounts/{id}/status-history` | Every FSM transition |
 | 🔁 | `POST /api/accounts/{id}/activate · block · unblock · freeze · unfreeze · close` | Lifecycle, `204` |
-| 💸 | `POST /api/transfers` | Start a transfer (`202`, `Idempotency-Key` = `correlation_id`) |
-| 🔎 | `GET /api/transfers/{correlation_id}` | `pending` · `completed` · `failed` |
+| 💸 | `POST /api/transfers` | Start a transfer (`202` with its `transfer_id`; a retry with the same `Idempotency-Key` gets the same one, D17) |
+| 🔎 | `GET /api/transfers/{transfer_id}` | `pending` · `completed` · `failed` |
 | 📥 | `POST /api/accounts/{id}/deposits` | Receive an inbound PIX |
 | 📋 | `GET /api/accounts/{id}/reservations` · `/credits` | Paginated history of money out and in |
 
@@ -300,6 +302,7 @@ erDiagram
     customer_accounts ||--o{ customer_account_status_changes : "history"
     customer_accounts ||..o{ reservations : "account_id, no FK"
     customer_accounts ||..o{ credits : "account_id, no FK"
+    idempotency_keys }o..|| reservations : "transfer_id, no FK"
 
     customer_accounts {
         text account_id PK
@@ -340,6 +343,13 @@ erDiagram
         timestamp authorized_at
         timestamp settled_at
     }
+    idempotency_keys {
+        text scope PK "the source account"
+        text key PK "the client's Idempotency-Key"
+        text transfer_id
+        text fingerprint "the request it was used for"
+        timestamp inserted_at "a key older than 24 h is taken over"
+    }
 ```
 
 | Table | 🟩 Projector | Serves |
@@ -348,6 +358,7 @@ erDiagram
 | `reservations` | `ReservationsProjector` | money out, transfer outcome |
 | `credits` | `CreditsProjector` | money in, pending credits (D8) |
 | `projection_versions` | (the library) | last event each projector has applied |
+| `idempotency_keys` | none: the API's edge writes it (D17) | a retry's `Idempotency-Key` → its `transfer_id` |
 
 ## Queues
 

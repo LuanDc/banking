@@ -9,17 +9,18 @@ defmodule E2E.Stories.RedeliveryTest do
   setup do
     from = funded_account(1_000)
     to = active_account()
-    key = new_key("transfer")
 
-    %{status: 202} = Accounts.transfer(from, to, 400, key)
-    settled_transfer(key, "completed")
+    %{status: 202, body: %{"transfer_id" => transfer_id}} =
+      Accounts.transfer(from, to, 400, new_key("transfer"))
+
+    settled_transfer(transfer_id, "completed")
     eventually(fn -> assert_balance(to, 400) end)
 
     # The batch that settled it, to replay the very messages that booked it (docs, D17).
     batch_id =
       eventually(fn ->
         assert %{status: 200, body: %{"data" => [%{"batch_id" => batch_id}]}} =
-                 Ledger.batches(key)
+                 Ledger.batches(transfer_id)
 
         batch_id
       end)
@@ -29,13 +30,13 @@ defmodule E2E.Stories.RedeliveryTest do
       %{account_id: to, type: "credit", amount: 400}
     ]
 
-    %{from: from, to: to, key: key, batch_id: batch_id, entries: entries}
+    %{from: from, to: to, transfer_id: transfer_id, batch_id: batch_id, entries: entries}
   end
 
   test "a redelivered BookTransactionBatch books nothing twice", context do
     Broker.publish_command("BookTransactionBatch", %{
       batch_id: context.batch_id,
-      transfer_id: context.key,
+      transfer_id: context.transfer_id,
       entries: context.entries
     })
 
@@ -48,7 +49,7 @@ defmodule E2E.Stories.RedeliveryTest do
   test "a redelivered LedgerBatchBooked settles nothing twice", context do
     Broker.publish_event("LedgerBatchBooked", "ledger.batch.booked", %{
       batch_id: context.batch_id,
-      transfer_id: context.key,
+      transfer_id: context.transfer_id,
       entries: context.entries
     })
 
@@ -61,7 +62,7 @@ defmodule E2E.Stories.RedeliveryTest do
   test "a late LedgerBatchRejected for a booked batch gives nothing back", context do
     Broker.publish_event("LedgerBatchRejected", "ledger.batch.rejected", %{
       batch_id: context.batch_id,
-      transfer_id: context.key,
+      transfer_id: context.transfer_id,
       reason: "unbalanced",
       entries: context.entries
     })

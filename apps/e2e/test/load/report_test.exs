@@ -66,7 +66,7 @@ defmodule E2E.Load.ReportTest do
     text = Report.format(put_in(@report.operations.transfer, transfer))
 
     assert text =~ "⚠️ Errors"
-    assert text =~ "transfer: timeout ×2 · HTTP 500 ×1 (1 reached the service anyway)"
+    assert text =~ "transfer: timeout ×2 · HTTP 500 ×1 (1 settled by a retry with the same key)"
   end
 
   test "names each account whose books do not add up" do

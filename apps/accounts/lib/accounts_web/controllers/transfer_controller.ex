@@ -9,13 +9,13 @@ defmodule AccountsWeb.TransferController do
     with {:ok, transfer} <- CustomerAccounts.transfer_money(params, idempotency_key(conn)) do
       conn
       |> put_status(:accepted)
-      |> put_resp_header("location", ~p"/api/transfers/#{transfer.correlation_id}")
+      |> put_resp_header("location", ~p"/api/transfers/#{transfer.transfer_id}")
       |> render(:show, transfer: transfer)
     end
   end
 
-  def show(conn, %{"correlation_id" => correlation_id}) do
-    with {:ok, transfer} <- CustomerAccounts.get_transfer(correlation_id) do
+  def show(conn, %{"transfer_id" => transfer_id}) do
+    with {:ok, transfer} <- CustomerAccounts.get_transfer(transfer_id) do
       render(conn, :show, transfer: transfer)
     end
   end
@@ -28,7 +28,7 @@ defmodule AccountsWeb.TransferController do
     end
   end
 
-  # README, D4: the client's key is the correlation id.
+  # README, D17: the client's key answers its retries; the transfer has an id of its own.
   defp idempotency_key(conn) do
     conn
     |> get_req_header("idempotency-key")

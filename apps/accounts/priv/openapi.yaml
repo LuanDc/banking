@@ -222,16 +222,14 @@ paths:
       description: |
         Starts the saga in section 5 by reserving the amount on the source account. The rest of
         the saga (credit authorization, booking in the Ledger, confirmation or compensation) runs
-        asynchronously, so poll `GET /api/transfers/{correlation_id}` for the outcome.
+        asynchronously, so poll `GET /api/transfers/{transfer_id}` for the outcome.
 
-        The `Idempotency-Key` becomes the saga's `correlation_id` (D4). A repeated key starts
-        nothing new: it answers 202 with the transfer as it stands.
+        Accounts names the transfer with a `transfer_id` of its own (D17). The `Idempotency-Key`
+        only answers a retry: the same key from the same source account, with the same body,
+        answers 202 with the same transfer as it stands, for 24 hours. The same key with another
+        body is refused with `idempotency_key_reused`.
       parameters:
-        - name: Idempotency-Key
-          in: header
-          required: true
-          description: Client-generated key, used as the `correlation_id`.
-          schema: { $ref: "#/components/schemas/Id" }
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -256,8 +254,9 @@ paths:
         "422":
           description: |
             The command is invalid, or the reservation was rejected (`BalanceReservationRejected`).
-            `code` is `validation_failed`, with the offending `fields` (the Idempotency-Key is
-            the `transfer_id`), or one of `account_not_active` or `insufficient_balance`.
+            `code` is `validation_failed`, with the offending `fields` (a missing Idempotency-Key
+            is `idempotency_key`), `idempotency_key_reused`, or one of `account_not_active` or
+            `insufficient_balance`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -277,14 +276,12 @@ paths:
         any credit: a frozen account refuses it. The Ledger then books it, debiting the
         settlement account, and the available balance rises once the batch is booked.
 
-        The `Idempotency-Key` becomes the `correlation_id` (D4). A repeated key credits nothing
-        twice.
+        The deposit is named by a `transfer_id` of its own (D17). The same `Idempotency-Key` for
+        the same account, with the same body, answers 202 with the same deposit and credits
+        nothing twice, for 24 hours. The same key with another body is refused with
+        `idempotency_key_reused`.
       parameters:
-        - name: Idempotency-Key
-          in: header
-          required: true
-          description: Client-generated key, used as the `correlation_id`.
-          schema: { $ref: "#/components/schemas/Id" }
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -301,26 +298,26 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [correlation_id, account_id, amount]
+                required: [transfer_id, account_id, amount]
                 properties:
-                  correlation_id: { $ref: "#/components/schemas/Id" }
+                  transfer_id: { $ref: "#/components/schemas/Id" }
                   account_id: { $ref: "#/components/schemas/Id" }
                   amount: { $ref: "#/components/schemas/Cents" }
         "404": { $ref: "#/components/responses/NotFound" }
         "422":
           description: |
             The command is invalid, or the credit was rejected (`CreditRejected`). `code` is
-            `validation_failed`, with the offending `fields` (the Idempotency-Key is the
-            `transfer_id`), or `credit_not_allowed`.
+            `validation_failed`, with the offending `fields` (a missing Idempotency-Key is
+            `idempotency_key`), `idempotency_key_reused`, or `credit_not_allowed`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
               example:
                 errors: { code: credit_not_allowed, detail: The account may not receive money. }
 
-  /api/transfers/{correlation_id}:
+  /api/transfers/{transfer_id}:
     parameters:
-      - name: correlation_id
+      - name: transfer_id
         in: path
         required: true
         schema: { $ref: "#/components/schemas/Id" }
@@ -329,7 +326,7 @@ paths:
       operationId: getTransfer
       summary: Get a transfer's outcome
       description: |
-        Built from the `reservations` and `credits` rows with this `correlation_id`. There is no
+        Built from the `reservations` and `credits` rows with this `transfer_id`. There is no
         separate transfer read model, and a deposit is not a transfer.
       responses:
         "200":
@@ -397,6 +394,14 @@ paths:
 
 components:
   parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Client-generated, unique per request the client means once. It answers a retry and
+        never becomes the transfer's id (D17).
+      schema: { type: string, minLength: 1, maxLength: 255 }
     AccountId:
       name: account_id
       in: path
@@ -510,9 +515,9 @@ components:
       enum: [open, confirmed, released, rejected]
     Reservation:
       type: object
-      required: [correlation_id, amount, status, reserved_at]
+      required: [transfer_id, amount, status, reserved_at]
       properties:
-        correlation_id: { $ref: "#/components/schemas/Id" }
+        transfer_id: { $ref: "#/components/schemas/Id" }
         amount: { $ref: "#/components/schemas/Cents" }
         status: { $ref: "#/components/schemas/ReservationStatus" }
         reason:
@@ -528,9 +533,9 @@ components:
       enum: [authorized, posted, cancelled, rejected]
     Credit:
       type: object
-      required: [correlation_id, amount, status]
+      required: [transfer_id, amount, status]
       properties:
-        correlation_id: { $ref: "#/components/schemas/Id" }
+        transfer_id: { $ref: "#/components/schemas/Id" }
         amount: { $ref: "#/components/schemas/Cents" }
         status: { $ref: "#/components/schemas/CreditStatus" }
         reason:
@@ -547,9 +552,9 @@ components:
             - type: "null"
     Transfer:
       type: object
-      required: [correlation_id, from_account_id, to_account_id, amount, status]
+      required: [transfer_id, from_account_id, to_account_id, amount, status]
       properties:
-        correlation_id: { $ref: "#/components/schemas/Id" }
+        transfer_id: { $ref: "#/components/schemas/Id" }
         from_account_id: { $ref: "#/components/schemas/Id" }
         to_account_id: { $ref: "#/components/schemas/Id" }
         amount: { $ref: "#/components/schemas/Cents" }

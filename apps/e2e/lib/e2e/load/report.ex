@@ -82,7 +82,7 @@ defmodule E2E.Load.Report do
   end
 
   defp recovered(0), do: ""
-  defp recovered(count), do: " (#{count} reached the service anyway)"
+  defp recovered(count), do: " (#{count} settled by a retry with the same key)"
 
   defp tally(counts) do
     counts

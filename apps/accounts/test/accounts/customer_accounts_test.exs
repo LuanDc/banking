@@ -101,7 +101,7 @@ defmodule Accounts.CustomerAccountsTest do
 
       assert {:ok,
               %{
-                correlation_id: transfer_id,
+                transfer_id: transfer_id,
                 from_account_id: from,
                 to_account_id: "acc-2",
                 amount: 400,

@@ -41,7 +41,7 @@ defmodule E2E.Accounts do
   end
 
   @spec get_transfer(String.t()) :: response
-  def get_transfer(correlation_id), do: get("/api/transfers/#{correlation_id}")
+  def get_transfer(transfer_id), do: get("/api/transfers/#{transfer_id}")
 
   @spec reservations(String.t()) :: response
   def reservations(account_id), do: get("/api/accounts/#{account_id}/reservations")

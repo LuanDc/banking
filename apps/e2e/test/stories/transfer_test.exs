@@ -6,9 +6,13 @@ defmodule E2E.Stories.TransferTest do
     to = active_account()
     key = new_key("transfer")
 
-    assert %{status: 202, body: %{"status" => "pending"}} = Accounts.transfer(from, to, 400, key)
+    assert %{status: 202, body: %{"status" => "pending", "transfer_id" => transfer_id}} =
+             Accounts.transfer(from, to, 400, key)
 
-    settled_transfer(key, "completed")
+    # The transfer has an id of its own; the key only answers a retry (docs, D17).
+    assert transfer_id != key
+
+    settled_transfer(transfer_id, "completed")
 
     eventually(fn ->
       assert_balance(from, 600)
@@ -16,8 +20,10 @@ defmodule E2E.Stories.TransferTest do
     end)
 
     # The settlement batch has an id of its own and names the transfer it settles (docs, D17).
-    assert %{status: 200, body: %{"data" => [%{"transfer_id" => ^key, "entries" => entries}]}} =
-             Ledger.batches(key)
+    assert %{
+             status: 200,
+             body: %{"data" => [%{"transfer_id" => ^transfer_id, "entries" => entries}]}
+           } = Ledger.batches(transfer_id)
 
     assert [
              %{"account_id" => ^from, "type" => "debit", "amount" => 400},
@@ -30,10 +36,10 @@ defmodule E2E.Stories.TransferTest do
     to = active_account()
     assert %{status: 204} = Accounts.transition(to, "block", "suspected fraud")
 
-    key = new_key("transfer")
-    assert %{status: 202} = Accounts.transfer(from, to, 250, key)
+    assert %{status: 202, body: %{"transfer_id" => transfer_id}} =
+             Accounts.transfer(from, to, 250, new_key("transfer"))
 
-    settled_transfer(key, "completed")
+    settled_transfer(transfer_id, "completed")
     eventually(fn -> assert_balance(to, 250) end)
   end
 
@@ -42,10 +48,10 @@ defmodule E2E.Stories.TransferTest do
     to = active_account()
     assert %{status: 204} = Accounts.transition(to, "freeze", "court order")
 
-    key = new_key("transfer")
-    assert %{status: 202} = Accounts.transfer(from, to, 400, key)
+    assert %{status: 202, body: %{"transfer_id" => transfer_id}} =
+             Accounts.transfer(from, to, 400, new_key("transfer"))
 
-    assert %{"reason" => "credit_not_allowed"} = settled_transfer(key, "failed")
+    assert %{"reason" => "credit_not_allowed"} = settled_transfer(transfer_id, "failed")
 
     eventually(fn ->
       assert_balance(from, 1_000)
@@ -55,18 +61,24 @@ defmodule E2E.Stories.TransferTest do
                Accounts.reservations(from)
     end)
 
-    assert %{status: 200, body: %{"data" => []}} = Ledger.batches(key)
+    assert %{status: 200, body: %{"data" => []}} = Ledger.batches(transfer_id)
   end
 
   test "a transfer above the available balance is refused at once" do
     from = funded_account(100)
     to = active_account()
-    key = new_key("transfer")
 
     assert %{status: 422, body: %{"errors" => %{"code" => "insufficient_balance"}}} =
-             Accounts.transfer(from, to, 101, key)
+             Accounts.transfer(from, to, 101, new_key("transfer"))
 
-    assert %{"reason" => "insufficient_balance"} = settled_transfer(key, "failed")
+    # The refusal is recorded: the source's reservation shows it (docs, D14).
+    eventually(fn ->
+      assert %{
+               status: 200,
+               body: %{"data" => [%{"status" => "rejected", "reason" => "insufficient_balance"}]}
+             } = Accounts.reservations(from)
+    end)
+
     assert_balance(from, 100)
   end
 
@@ -84,10 +96,13 @@ defmodule E2E.Stories.TransferTest do
     to = active_account()
     key = new_key("transfer")
 
-    assert %{status: 202} = Accounts.transfer(from, to, 400, key)
-    assert %{status: 202} = Accounts.transfer(from, to, 400, key)
+    assert %{status: 202, body: %{"transfer_id" => transfer_id}} =
+             Accounts.transfer(from, to, 400, key)
 
-    settled_transfer(key, "completed")
+    assert %{status: 202, body: %{"transfer_id" => ^transfer_id}} =
+             Accounts.transfer(from, to, 400, key)
+
+    settled_transfer(transfer_id, "completed")
     eventually(fn -> assert_balance(from, 600) end)
     assert_balance(to, 400)
   end

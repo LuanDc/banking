@@ -9,6 +9,7 @@ defmodule Accounts.CustomerAccounts do
 
   alias Accounts.App
   alias Accounts.BankAccounts
+  alias Accounts.Command
   alias Accounts.Commands.ActivateCustomerAccount
   alias Accounts.Commands.AuthorizeCredit
   alias Accounts.Commands.BlockCustomerAccount
@@ -23,6 +24,7 @@ defmodule Accounts.CustomerAccounts do
   alias Accounts.Events.BalanceReservationRejected
   alias Accounts.Events.BalanceReserved
   alias Accounts.Events.CreditRejected
+  alias Accounts.Idempotency
   alias Accounts.Projections.Credit
   alias Accounts.Projections.CustomerAccount
   alias Accounts.Projections.Reservation
@@ -89,16 +91,25 @@ defmodule Accounts.CustomerAccounts do
 
   @doc """
   Starts a transfer by reserving `params[\"amount\"]` on `params[\"from_account_id\"]`
-  for `params[\"to_account_id\"]` (README, section 5). The idempotency key is the saga's
-  `transfer_id` (D4): a repeated key starts nothing new and returns the transfer as it stands.
+  for `params[\"to_account_id\"]` (README, section 5), named by a new `transfer_id` (D17).
+  The same idempotency key from the same account, with the same request, names the same transfer:
+  a retry starts nothing new and returns the transfer as it stands.
   """
   def transfer_money(params, idempotency_key) do
-    command =
+    new_command =
       params
       |> Map.put("account_id", params["from_account_id"])
-      |> Map.put("transfer_id", idempotency_key)
+      |> Map.put("transfer_id", Ecto.UUID.generate())
       |> ReserveBalance.new()
 
+    fingerprint = fingerprint(["transfer", new_command.to_account_id, new_command.amount])
+
+    with {:ok, command} <- claim(new_command, idempotency_key, fingerprint) do
+      reserve(command)
+    end
+  end
+
+  defp reserve(command) do
     case dispatch_for_events(command) do
       {:ok, [%BalanceReserved{}]} -> {:ok, pending_transfer(command)}
       {:ok, [%BalanceReservationRejected{reason: reason}]} -> {:error, reason}
@@ -109,16 +120,24 @@ defmodule Accounts.CustomerAccounts do
 
   @doc """
   Receives an inbound PIX of `params[\"amount\"]` into `params[\"account_id\"]`: a credit
-  from the bank's PIX settlement account (README, D2), authorized like any other. The idempotency
-  key is its `transfer_id` (D4): a repeated key credits nothing twice.
+  from the bank's PIX settlement account (README, D2), authorized like any other, named by a new
+  `transfer_id` (D17). The same idempotency key for the same account, with the same request,
+  credits nothing twice.
   """
   def deposit(params, idempotency_key) do
-    command =
+    new_command =
       params
-      |> Map.put("transfer_id", idempotency_key)
+      |> Map.put("transfer_id", Ecto.UUID.generate())
       |> Map.put("from_account_id", BankAccounts.pix_settlement())
       |> AuthorizeCredit.new()
 
+    with {:ok, command} <-
+           claim(new_command, idempotency_key, fingerprint(["deposit", new_command.amount])) do
+      authorize(command)
+    end
+  end
+
+  defp authorize(command) do
     case dispatch_for_events(command) do
       {:ok, [%CreditRejected{reason: reason}]} ->
         {:error, reason}
@@ -126,7 +145,7 @@ defmodule Accounts.CustomerAccounts do
       {:ok, _authorized_or_repeated} ->
         {:ok,
          %{
-           correlation_id: command.transfer_id,
+           transfer_id: command.transfer_id,
            account_id: command.account_id,
            amount: command.amount
          }}
@@ -204,7 +223,7 @@ defmodule Accounts.CustomerAccounts do
 
         {:ok,
          %{
-           correlation_id: reservation.transfer_id,
+           transfer_id: reservation.transfer_id,
            from_account_id: reservation.account_id,
            to_account_id: reservation.to_account_id,
            amount: reservation.amount,
@@ -213,6 +232,22 @@ defmodule Accounts.CustomerAccounts do
          }}
     end
   end
+
+  # README, D17: the key answers a retry at the edge and never reaches the domain. An invalid
+  # command claims nothing, so a client may fix it and send it again under the same key.
+  defp claim(_command, key, _fingerprint) when key in [nil, ""] do
+    {:error, {:validation_failed, %{idempotency_key: ["must be present"]}}}
+  end
+
+  defp claim(command, key, fingerprint) do
+    with :ok <- Command.validate(command),
+         {:ok, transfer_id} <-
+           Idempotency.claim(command.account_id, key, fingerprint, command.transfer_id) do
+      {:ok, %{command | transfer_id: transfer_id}}
+    end
+  end
+
+  defp fingerprint(parts), do: Enum.map_join(parts, "|", &to_string/1)
 
   # The events a command caused, to answer with its decision: a rejection is an event too.
   defp dispatch_for_events(command) do
@@ -232,7 +267,7 @@ defmodule Accounts.CustomerAccounts do
 
   defp pending_transfer(command) do
     %{
-      correlation_id: command.transfer_id,
+      transfer_id: command.transfer_id,
       from_account_id: command.account_id,
       to_account_id: command.to_account_id,
       amount: command.amount,

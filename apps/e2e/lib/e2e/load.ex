@@ -157,8 +157,8 @@ defmodule E2E.Load do
     %{op: :unknown, outcome: "error", reason: "no answer"}
   end
 
-  # The request is drawn before it is sent, so an error keeps its key and the check can still
-  # ask the services what became of it.
+  # The request is drawn before it is sent, so an error keeps its key and the check can send it
+  # again, as a client would, to learn what became of it.
   defp operate(operation, accounts, opts) do
     request = request(operation, accounts)
     started = now()
@@ -183,14 +183,8 @@ defmodule E2E.Load do
 
   defp request(:read, accounts), do: %{op: :read, account_id: Enum.random(accounts)}
 
-  defp perform(%{op: :transfer} = request, opts, started) do
-    response = Accounts.transfer(request.from, request.to, request.amount, request.key)
-    answered(response, fn -> transfer_outcome(request.key) end, started, opts)
-  end
-
-  defp perform(%{op: :deposit} = request, opts, started) do
-    response = Accounts.deposit(request.to, request.amount, request.key)
-    answered(response, fn -> credit_outcome(request.to, request.key) end, started, opts)
+  defp perform(%{op: op} = request, opts, started) when op in [:transfer, :deposit] do
+    answered(send_request(request), request, started, opts)
   end
 
   defp perform(%{op: :read, account_id: account_id}, _opts, started) do
@@ -199,12 +193,26 @@ defmodule E2E.Load do
     %{outcome: "ok", accept_ms: now() - started}
   end
 
-  defp answered(response, outcome, started, opts) do
+  defp send_request(%{op: :transfer} = request),
+    do: Accounts.transfer(request.from, request.to, request.amount, request.key)
+
+  defp send_request(%{op: :deposit} = request),
+    do: Accounts.deposit(request.to, request.amount, request.key)
+
+  # README, D17: the service names the operation; its transfer_id is what the client follows.
+  defp answered(response, request, started, opts) do
     accept_ms = now() - started
 
     case response do
-      %{status: 202} -> Map.put(await(outcome, started, opts), :accept_ms, accept_ms)
-      other -> Map.put(refused(other), :accept_ms, accept_ms)
+      %{status: 202, body: %{"transfer_id" => transfer_id}} ->
+        request
+        |> Map.put(:transfer_id, transfer_id)
+        |> lookup()
+        |> await(started, opts)
+        |> Map.merge(%{accept_ms: accept_ms, transfer_id: transfer_id})
+
+      other ->
+        Map.put(refused(other), :accept_ms, accept_ms)
     end
   end
 
@@ -250,8 +258,8 @@ defmodule E2E.Load do
     end
   end
 
-  defp transfer_outcome(key) do
-    case Accounts.get_transfer(key) do
+  defp transfer_outcome(transfer_id) do
+    case Accounts.get_transfer(transfer_id) do
       %{status: 200, body: %{"status" => status}} when status in ["completed", "failed"] ->
         {:done, status}
 
@@ -266,10 +274,10 @@ defmodule E2E.Load do
   # An inbound PIX shows as a credit only once it is posted (D2), so until then it is absent.
   # An account's credits are listed newest first; a busy account may push an old one past the
   # first page, and it then counts as a timeout until the check finds it settled.
-  defp credit_outcome(account_id, key) do
+  defp credit_outcome(account_id, transfer_id) do
     %{status: 200, body: %{"data" => credits}} = Accounts.credits(account_id, limit: 100)
 
-    case Enum.find(credits, &(&1["correlation_id"] == key)) do
+    case Enum.find(credits, &(&1["transfer_id"] == transfer_id)) do
       %{"status" => status} when status in ["posted", "rejected", "cancelled"] -> {:done, status}
       nil -> :absent
       _pending -> :pending
@@ -305,8 +313,8 @@ defmodule E2E.Load do
   ## Check
 
   # Once the queues are empty, every outcome that was sent is final. What timed out is read
-  # again. A client-side error may still have reached the service, so its key is looked up too:
-  # an absent one never did.
+  # again. A client-side error may still have reached the service: it is sent again with the same
+  # key, as a client would, and the service answers with what it already started, or starts it.
   defp resolve_late(results, opts) do
     deadline = now() + opts.drain_timeout * 1_000
 
@@ -328,17 +336,21 @@ defmodule E2E.Load do
   end
 
   defp recover(result, deadline, opts) do
-    lookup = lookup(result)
+    case send_request(result) do
+      %{status: 202, body: %{"transfer_id" => transfer_id}} ->
+        result
+        |> Map.merge(%{transfer_id: transfer_id, recovered: true})
+        |> resolve(deadline, opts)
 
-    case lookup.() do
-      :absent -> result
-      {:done, status} -> Map.merge(result, %{outcome: status, recovered: true})
-      :pending -> resolve(result, deadline, opts)
+      other ->
+        Map.merge(result, Map.put(refused(other), :recovered, true))
     end
+  rescue
+    _still_failing -> result
   end
 
-  defp lookup(%{op: :transfer, key: key}), do: fn -> transfer_outcome(key) end
-  defp lookup(%{op: :deposit, key: key, to: to}), do: fn -> credit_outcome(to, key) end
+  defp lookup(%{op: :transfer, transfer_id: id}), do: fn -> transfer_outcome(id) end
+  defp lookup(%{op: :deposit, transfer_id: id, to: to}), do: fn -> credit_outcome(to, id) end
 
   # The management API refreshes its counts every few seconds: two empty samples in a row,
   # that far apart, mean the queues really drained.

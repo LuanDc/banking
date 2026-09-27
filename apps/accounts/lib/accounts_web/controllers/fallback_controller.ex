@@ -16,7 +16,8 @@ defmodule AccountsWeb.FallbackController do
     invalid_query: :unprocessable_entity,
     account_not_active: :unprocessable_entity,
     insufficient_balance: :unprocessable_entity,
-    credit_not_allowed: :unprocessable_entity
+    credit_not_allowed: :unprocessable_entity,
+    idempotency_key_reused: :unprocessable_entity
   }
 
   @details %{
@@ -29,7 +30,8 @@ defmodule AccountsWeb.FallbackController do
     invalid_query: "A query parameter is invalid.",
     account_not_active: "The source account may not send money.",
     insufficient_balance: "The source account has insufficient balance.",
-    credit_not_allowed: "The account may not receive money."
+    credit_not_allowed: "The account may not receive money.",
+    idempotency_key_reused: "The Idempotency-Key was already used for another request."
   }
 
   # README, D14: a command that broke its input rules, with the messages for each field.

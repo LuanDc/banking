@@ -6,8 +6,8 @@ defmodule E2E.Stories.BooksBalanceTest do
     to = active_account()
     key = new_key("transfer")
 
-    %{status: 202} = Accounts.transfer(from, to, 200, key)
-    settled_transfer(key, "completed")
+    %{status: 202, body: %{"transfer_id" => transfer_id}} = Accounts.transfer(from, to, 200, key)
+    settled_transfer(transfer_id, "completed")
 
     # Every batch books its debits and credits together (docs, section 4.1), so the trial
     # balance holds at any moment, whatever other stories are doing.

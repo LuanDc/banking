@@ -14,7 +14,7 @@ defmodule E2E.Flows do
   alias E2E.Accounts
   alias E2E.Ledger
 
-  @doc "A fresh id for a customer or an `Idempotency-Key`."
+  @doc "A fresh id for a customer or an `Idempotency-Key`. The services name transfers themselves."
   @spec new_key(String.t()) :: String.t()
   def new_key(prefix \\ "e2e") do
     "#{prefix}-#{Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)}"
@@ -42,10 +42,10 @@ defmodule E2E.Flows do
 
   @doc "Waits for a transfer's outcome and returns the transfer."
   @spec settled_transfer(String.t(), String.t()) :: map()
-  def settled_transfer(correlation_id, status) do
+  def settled_transfer(transfer_id, status) do
     eventually(fn ->
       assert %{status: 200, body: %{"status" => ^status} = transfer} =
-               Accounts.get_transfer(correlation_id)
+               Accounts.get_transfer(transfer_id)
 
       transfer
     end)
