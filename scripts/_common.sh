@@ -55,5 +55,6 @@ wait_for_services() {
   fail "The services did not answer at $accounts and $ledger."
 }
 
-# Quotes the arguments so they survive the trip through `bash -c`.
-quoted() { printf ' %q' "$@"; }
+# Quotes the arguments so they survive the trip through `bash -c`. With none it prints nothing:
+# printf would still apply the format once and pass an empty '' argument.
+quoted() { [ "$#" -eq 0 ] || printf ' %q' "$@"; }
