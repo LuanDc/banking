@@ -88,7 +88,11 @@ All docs are in English, written for developers who find the repo on GitHub.
   holds the read-model queries.
 - Break a pipe into one step per line, starting from the value on its own line (`params`, then
   `|> Command.new()`, then `|> App.dispatch()`), even when it would fit on one.
-- Money is an integer number of cents (D1). Consumers deduplicate by `correlation_id` (D4).
+- Money is an integer number of cents (D1). Consumers deduplicate by `transfer_id` (D4).
+- **Identities follow D17.** One identity per aggregate, named `<concept>_id` everywhere, never a
+  bare `id` in a message. A business id goes in the payload, the `Idempotency-Key` stays at the
+  API's edge (`Accounts.Idempotency`), and `correlation_id`/`causation_id` are lineage metadata
+  only (`<App>.Lineage`): every new hop passes them on, and no rule reads them.
 
 ## Local setup
 

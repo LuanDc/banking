@@ -212,7 +212,8 @@ next command rebuilds it from its stream.
 
 ## Commands
 
-Commands arrive as JSON on `ledger.commands`, with the `type` as an AMQP property. The
+Commands arrive as JSON on `ledger.commands`, with the `type` and the `correlation_id` as AMQP
+properties. The
 [`Inbox`](lib/ledger/messaging/inbox.ex) turns each one into a struct.
 
 | Command | Fields | Aggregate |
@@ -314,6 +315,11 @@ flowchart LR
 
 Publishing uses publisher confirms plus `mandatory`: a message that no queue takes fails and is
 retried by the outbox, never dropped silently.
+
+🧵 **Lineage** (D17): a message carries its conversation's `correlation_id` as an AMQP property
+and the id of the event it came from as its `message_id`, never in the body. The consumer
+dispatches with both, so one transfer shows a single `correlation_id` in both event stores, each
+event caused by the one before it (`causation_id`). Logs are tagged with it too.
 
 ## Tests and quality
 

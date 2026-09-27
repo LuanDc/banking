@@ -382,6 +382,11 @@ flowchart LR
 Delivery is at least once, so every consumer deduplicates by `transfer_id` (D4). Publishing
 uses publisher confirms plus `mandatory`, so a message is never lost silently (D10).
 
+🧵 **Lineage** (D17): a message carries its conversation's `correlation_id` as an AMQP property
+and the id of the event it came from as its `message_id`, never in the body. The consumer
+dispatches with both, so one transfer shows a single `correlation_id` in both event stores, each
+event caused by the one before it (`causation_id`). Logs are tagged with it too.
+
 ## Tests and quality
 
 ```bash

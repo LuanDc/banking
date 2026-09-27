@@ -99,8 +99,8 @@ flowchart TB
     E5["CustomerAccountFrozen ⊕<br/>account_id, reason, timestamp"]:::evt
     E6["CustomerAccountUnfrozen ⊕"]:::evt
     E7["CustomerAccountClosed ⊕"]:::evt
-    E8["BalanceReserved<br/>account_id, amount, correlation_id, timestamp"]:::evt
-    E9["BalanceReservationRejected ⊕<br/>account_id, amount, reason, correlation_id"]:::evt
+    E8["BalanceReserved<br/>account_id, amount, transfer_id, timestamp"]:::evt
+    E9["BalanceReservationRejected ⊕<br/>account_id, amount, reason, transfer_id"]:::evt
 
     P1["Policy: whenever BalanceReserved,<br/>assemble the double-entry batch ⊕"]:::pol
     P2["Policy: whenever KYC is approved,<br/>activate the account ⊕"]:::pol
@@ -189,12 +189,12 @@ flowchart TB
     C0["OpenLedgerAccount ⊕ · CloseLedgerAccount ⊕"]:::cmd
     AGG0["LedgerAccount ⊕<br/>OPEN · CLOSED"]:::agg
 
-    C1["BookTransactionBatch ⊕<br/>batch_id, correlation_id, entries"]:::cmd
+    C1["BookTransactionBatch ⊕<br/>batch_id, transfer_id, entries"]:::cmd
 
     AGG["TransactionBatch<br/>holds LedgerEntry[]<br/>INVARIANT: sum DEBIT = sum CREDIT"]:::agg
 
-    E1["LedgerBatchBooked<br/>batch_id, correlation_id, entries, timestamp"]:::evt
-    E2["LedgerBatchRejected ⊕<br/>batch_id, correlation_id, reason"]:::evt
+    E1["LedgerBatchBooked<br/>batch_id, transfer_id, entries, timestamp"]:::evt
+    E2["LedgerBatchRejected ⊕<br/>batch_id, transfer_id, reason"]:::evt
 
     P2["Policy: on LedgerBatchBooked,<br/>update the balance projection"]:::pol
     P3["Policy: on LedgerBatchRejected,<br/>release the reservation — compensation ⊕"]:::pol
@@ -244,7 +244,7 @@ and `Ledger` only receives a command.
 ```mermaid
 flowchart TB
     A["👤 Customer"]:::actor
-    C0["TransferMoney<br/>from_account, to_account, amount, correlation_id"]:::cmd
+    C0["TransferMoney<br/>from_account, to_account, amount<br/>(Accounts names it: transfer_id)"]:::cmd
 
     subgraph AM["Account Management Context"]
         direction TB
@@ -325,7 +325,7 @@ sequenceDiagram
 
     Customer->>CA: TransferMoney
     CA->>CA: validate ACTIVE state + balance
-    CA-->>LR: BalanceReserved (correlation_id)
+    CA-->>LR: BalanceReserved (transfer_id)
     LR->>DA: AuthorizeCredit
 
     alt credit allowed (ACTIVE / BLOCKED)
@@ -350,7 +350,7 @@ sequenceDiagram
 
 The reservation in `Account Management` is the mechanism that replaces the distributed
 transaction: between `BalanceReserved` and `ReservationConfirmed`/`BalanceReleased` the system sits
-in eventual consistency, and the `correlation_id` is what stitches the saga together.
+in eventual consistency, and the `transfer_id` is what stitches the saga together (D17).
 
 ---
 
@@ -400,8 +400,8 @@ that contract. The dependency runs one way only (D3, D5).
 | `ConfirmReservation` ⊕ | `CustomerAccount` | `ReservationConfirmed` ⊕ | — | reservation exists |
 | `ReleaseBalance` ⊕ | `CustomerAccount` | `BalanceReleased` ⊕ | — | reservation exists |
 | `AuthorizeCredit` ⊕ | `CustomerAccount` | `CreditAuthorized` ⊕ | `CreditRejected` ⊕ | matrix allows credit: `ACTIVE`, `BLOCKED` (D5) |
-| `PostCredit` ⊕ | `CustomerAccount` | `CreditPosted` ⊕ | — (a posted `correlation_id` is ignored, D4) | none: mirrors a credit the Ledger booked (D2) |
-| `CancelCredit` ⊕ | `CustomerAccount` | `CreditCancelled` ⊕ | — (an unknown `correlation_id` is ignored, D4) | pending credit exists |
+| `PostCredit` ⊕ | `CustomerAccount` | `CreditPosted` ⊕ | — (a posted `transfer_id` is ignored, D4) | none: mirrors a credit the Ledger booked (D2) |
+| `CancelCredit` ⊕ | `CustomerAccount` | `CreditCancelled` ⊕ | — (an unknown `transfer_id` is ignored, D4) | pending credit exists |
 
 The guards above are business rules, checked by the aggregate. What a command must carry (a
 `customer_id`, a reason to block or freeze, a positive amount, a destination other than the
@@ -458,7 +458,7 @@ Red sticky notes raised during modeling. Each one is worth an invariant test onc
 | H1 | **Owner of the chart of accounts.** Does `Ledger` know the customer's accounting accounts, or does it receive the identifiers in the event payload? | Determines whether `CustomerAccountOpened` has to trigger the creation of accounting accounts. **Resolved → D5.** |
 | H2 | **Credit into a `BLOCKED` account.** The matrix allows inbound money, but credits don't go through a reservation. Who authorizes the entry? | If `Ledger` doesn't check the status, `BLOCKED` is only enforced on debits. **Resolved → D5.** |
 | H3 | **Reservation timeout.** Does a `BalanceReserved` with no matching `LedgerBatchBooked` stay pending forever? | Without expiry, available balance leaks. Calls for a scheduler or a `ReservationExpired` event. **Resolved → D6.** |
-| H4 | **Idempotency.** Is `correlation_id` the deduplication key in `Ledger`? | A PubSub redelivery could book the same batch twice. **Resolved → D4.** |
+| H4 | **Idempotency.** Is `correlation_id` the deduplication key in `Ledger`? | A PubSub redelivery could book the same batch twice. **Resolved → D4, keyed by `transfer_id` since D17.** |
 | H5 | **Freezing with an open reservation.** `FreezeCustomerAccount` during an in-flight saga: abort it or let it finish? | Affects the guards on `ConfirmReservation`. **Resolved → D7.** |
 | H6 | **Residual balance at closure.** Does `CloseCustomerAccount` require a zero balance, or does it generate a transfer entry? | A terminal state holding a balance breaks reconciliation. **Resolved → D8.** |
 | H7 | **Reversals.** An accounting batch is immutable — is a reversal a new, inverted batch? | Determines whether `LedgerBatchReversed` exists. **Model decided, implementation deferred → D9.** |
@@ -581,22 +581,23 @@ from `LedgerBatchBooked`.
 Rejected: subscribing to the other service's event store (a shared database), distributed
 Phoenix.PubSub (not durable, hides the failures this lab is about), Kafka (too heavy here).
 
-### D4 · Consumers deduplicate by `correlation_id`
+### D4 · Consumers deduplicate by the transfer's identity
 
-At-least-once delivery means every message may arrive twice. The consuming side uses the
-`correlation_id` as the deduplication key: the `LedgerRouter` derives the `batch_id` from it, so a
+At-least-once delivery means every message may arrive twice. The consuming side deduplicates by
+business identity (D17): the settlement batch's `batch_id` is derived from the `transfer_id`, so a
 redelivered `BookTransactionBatch` hits a batch already decided and books nothing, and a redelivered
 `LedgerBatchBooked` or `LedgerBatchRejected` finds the reservation already settled or released.
 
-`CustomerAccount` remembers every reservation and every credit it has decided, by `correlation_id`
+`CustomerAccount` remembers every reservation and every credit it has decided, by `transfer_id`
 (`decided_reservations`, `decided_credits`). A repeated `ReserveBalance` or `AuthorizeCredit`
 decides nothing, whether the first answer is still open, already settled or was a rejection. A
 rejection is final: if the balance arrived or the account was unfrozen since, a new transfer comes
-with a new `correlation_id`. Without this, a redelivery could reserve money twice after a
-confirmation, or turn a rejected saga into an approved one.
+with a new `transfer_id`. Without this, a redelivery could reserve money twice after a
+confirmation, or turn a rejected saga into an approved one. How long the decided ids are kept is
+H10.
 
-D17 (proposed) moves this key to the business identity, `transfer_id`, and leaves the client's
-`Idempotency-Key` at the API's edge. How long the decided ids are kept is H10.
+A client's retry never gets this far: the API answers it at its edge, from the `Idempotency-Key`
+(D17).
 
 ### D5 · Business rules live in Accounts; Ledger accounts only open and close
 
@@ -704,7 +705,7 @@ Accounts.EventStore ──┬─> LedgerCommandsPublisher ──> RabbitMQ   (ou
   position lives in the event store, so deleting rows alone replays nothing.
 - Events carry no timestamp: the `*_at` columns come from the event's `created_at` metadata.
 - The aggregate decides each reservation and credit once (D4), so `reservations` and `credits`
-  get one insert per `correlation_id`. The only upsert is `CreditPosted`, for a credit posted with
+  get one insert per `transfer_id`. The only upsert is `CreditPosted`, for a credit posted with
   no authorization first.
 - `ledger_accounts` is strongly consistent: a command dispatched with `consistency: :strong`
   returns only once the account shows up, which the D5 check relies on.
@@ -740,9 +741,11 @@ An operation marked `x-planned: true` is not built yet.
   saga and RabbitMQ.
 - **The Ledger has no write endpoint.** Its commands arrive only through its RabbitMQ contract
   (D3, D10), so HTTP cannot book an entry around `Accounts`' rules (D5).
-- **A transfer's `Idempotency-Key` header is its `correlation_id`** (D4). A retried request
-  starts no second saga. The response is `202 Accepted`, and the outcome is read from
-  `GET /api/transfers/{correlation_id}`, which combines the `reservations` and `credits` rows.
+- **Accounts names each transfer and deposit with a `transfer_id`** (D17). The response is
+  `202 Accepted` with it, and the outcome is read from `GET /api/transfers/{transfer_id}`, which
+  combines the `reservations` and `credits` rows. The `Idempotency-Key` header only answers a
+  retry: the same key from the same account, with the same body, returns the same transfer for
+  24 hours, and starts no second saga.
 - **Queries read the read models (D11)**, so they are eventually consistent. A lifecycle command
   returns `204` rather than the new state, which the read model may not show yet.
 - Errors extend Phoenix's shape: `{"errors": {"code": "invalid_transition", "detail": "…"}}`. An
@@ -756,12 +759,12 @@ An operation marked `x-planned: true` is not built yet.
 `BalanceReserved` carries the destination (`to_account_id`), and `CreditAuthorized` and
 `CreditRejected` carry the source (`from_account_id`). Each step of section 5 then follows from one
 event alone, so the `LedgerRouter` is a plain Commanded event handler rather than a process manager
-with state per `correlation_id`.
+with state per `transfer_id`.
 
 - `BalanceReserved` → `AuthorizeCredit` on the destination. `CreditRejected` →
   `ReleaseBalance` on the source.
-- The outbox books each `CreditAuthorized` as a `BookTransactionBatch` whose `batch_id` is the
-  `correlation_id` (D4).
+- The outbox books each `CreditAuthorized` as a `BookTransactionBatch` whose `batch_id` is
+  derived from the `transfer_id` (D4, D17).
 - **The Ledger's answer comes back through RabbitMQ.** `LedgerEventsPublisher` publishes
   `LedgerBatchBooked` and `LedgerBatchRejected`, with their entries, on the `ledger.events` topic
   exchange. Accounts binds its own queue, `accounts.ledger-events`, with a dead-letter queue
@@ -783,7 +786,7 @@ with state per `correlation_id`.
   for an account that was never opened fails, so its message is dead-lettered instead of
   posting into nothing.
 
-Rejected: a process manager holding the transfer's accounts per `correlation_id`. It would keep
+Rejected: a process manager holding the transfer's accounts per `transfer_id`. It would keep
 state that the events can carry, and it would still need the Ledger's answer delivered to it
 through RabbitMQ.
 
@@ -794,17 +797,17 @@ defines the struct, adds a constructor from request params (ExConstructor), and 
 `validates` available, so each command states what it must carry:
 
 ```elixir
-use Accounts.Command, fields: [:account_id, :amount, :correlation_id, :to_account_id]
+use Accounts.Command, fields: [:account_id, :amount, :transfer_id, :to_account_id]
 
 validates :account_id, presence: true
 validates :amount, by: [function: &Accounts.Command.positive_cents?/1, message: "…"]
-validates :correlation_id, presence: true
+validates :transfer_id, presence: true
 validates :to_account_id, presence: true, by: [function: &Accounts.Command.other_account?/2, …]
 ```
 
 - **Input rules** can be checked from the command alone: a required field, an amount that is a
   positive integer number of cents (D1), a destination other than the source, a
-  `correlation_id` (D4). **Business rules** need the aggregate's state and stay in
+  `transfer_id` (D4). **Business rules** need the aggregate's state and stay in
   `CustomerAccount`: the FSM, the available balance, the credit matrix, and whether the
   account exists.
 - `Accounts.Middleware.ValidateCommand`, in the Commanded router, checks every command before
@@ -863,22 +866,20 @@ services first. It runs against any stack that is up: the local one squeezed by
   balance its outcomes add up to, in both books (D2), the trial balance holds and no message was
   dead-lettered. Latency is reported, not asserted: it depends on the machine.
 - **Ambiguous outcomes are settled by the key.** A request that failed on the client side may
-  have reached the service. Once the queues are empty, the check looks its `Idempotency-Key` up
-  (D4), as a real client would, instead of guessing.
+  have reached the service. Once the queues are empty, the check sends it again with the same
+  `Idempotency-Key`, as a real client would, instead of guessing: the service answers with the
+  transfer it already started, or starts it then (D17).
 
 Rejected: running the stories in a loop. ExUnit picks the concurrency, reports pass or fail
 without latencies, and the stories are edge cases chosen to prove rules, not a realistic mix.
 Rejected: k6. It brings metrics and thresholds for free, but the flows and the two-book check
 would be rewritten in JavaScript, next to the Elixir ones they must agree with.
 
-### D17 · Identities: aggregates, business identifiers, idempotency and lineage — *proposed*
+### D17 · Identities: aggregates, business identifiers, idempotency and lineage
 
-> **Status: proposed, not implemented.** It amends D4, D12 and D13 once it is built. Until
-> then the code still uses `correlation_id` as described there.
-
-Today the `correlation_id` plays four roles at once. It is the transfer's identity (the key of
+It amends D4, D12 and D13. Before it, the `correlation_id` played four roles at once. It was the transfer's identity (the key of
 its reservation and credit), the client's `Idempotency-Key`, the `batch_id` in the Ledger, and
-the thread that ties a saga's messages together in the logs. The first is business, the second
+the thread that tied a saga's messages together in the logs. The first is business, the second
 belongs to the API, the third to the Ledger, and the last to infrastructure. Mixing them made the
 deduplication look like "retry protection" when it is a business invariant, and tied the domain's
 identity to a value the client picked.
@@ -916,25 +917,33 @@ confirms the reservation of `transfer_id` in it.
   transfer or a deposit. The customer and support look a transfer up by it, and
   `GET /api/transfers/{transfer_id}` returns it. For an inbound PIX, the scheme's `endToEndId`
   is a natural external reference, kept as an attribute once the lab models it.
-- **`batch_id`: the ledger entry's identity.** A batch is an accounting entry, not the transfer:
+- **`batch_id`: the ledger entry's identity** (`Accounts.Messaging.BatchId`). A batch is an accounting entry, not the transfer:
   a transfer may lead to more than one (the reversal of D9 is a new batch). The settlement
   batch's id is derived, `UUIDv5(namespace, "settlement:" <> transfer_id)`, so a redelivered
   command lands on the same batch. "A transfer is settled once" becomes an explicit rule instead of
-  a side effect of a retry key.
+  a side effect of a retry key. A client finds a transfer's batches with the Ledger's
+  `GET /api/batches?transfer_id=`.
 - **`Idempotency-Key`: an API contract.** The same key from the same client returns the same
-  `transfer_id`. Accounts keeps a table `idempotency_keys(scope, key, transfer_id, request_hash,
-  inserted_at)` with a unique `(scope, key)`, where the scope is the source account until the
-  API has clients of its own. It is written before the dispatch. A retry finds the row and
-  dispatches again with the same `transfer_id`, which the aggregate decides once. The same key with
-  a different body is `422 idempotency_key_reused`. Rows older than 24 hours are purged: a window
-  is right here, since it guards against a client's retries. It is not a read model (D11): no
-  projector owns it, and the edge writes it synchronously.
+  `transfer_id`. Accounts keeps a table `idempotency_keys(scope, key, transfer_id, fingerprint,
+  inserted_at)` keyed by `(scope, key)`, where the scope is the source account (the receiving one
+  for a deposit) until the API has clients of its own. The fingerprint is the operation and its
+  body. The command's input rules are checked first, so an invalid request claims no key. Then an
+  `INSERT … ON CONFLICT` claims the key atomically: of two requests with the same key, one inserts
+  and the other reads its row. A retry dispatches again with the same `transfer_id`, which the
+  aggregate decides once. The same key with another body is `422 idempotency_key_reused`, and a
+  request without a key fails validation on `idempotency_key`. A row older than 24 hours is taken
+  over by its next use, as a new key: a window is right here, since it guards against a client's
+  retries. Nothing purges old rows yet. It is not a read model (D11): no projector owns it, and
+  the edge writes it synchronously.
 - **`correlation_id` and `causation_id`: lineage only.** Commanded's native metadata. The
   `correlation_id` is the id of the conversation's first command, and every hop passes it on.
   Event handlers dispatch with `correlation_id: metadata.correlation_id, causation_id:
-  metadata.event_id`. RabbitMQ messages carry it in the AMQP `correlation_id` property and the
-  causation in a `causation_id` header, never in the body. The consumers dispatch with both.
-  Handlers and consumers set them as `Logger` metadata. No rule reads them.
+  metadata.event_id` (`<App>.Lineage`). RabbitMQ messages carry it in the AMQP `correlation_id`
+  property, never in the body. Their `message_id` is already the id of the event they were
+  published from, so a consumer dispatches with the property as the correlation and the
+  `message_id` as the cause. A value that is not a UUID is left out, since the event store keeps
+  both as UUIDs. Handlers and consumers tag their logs with the `correlation_id`. No rule reads
+  them.
 - **Trace context: later, and separate.** With OpenTelemetry, `traceparent` travels in the HTTP
   and AMQP headers, and the `trace_id` may be stored in event metadata as a link to the trace.
   The two are not the same: a saga crosses queues, retries and hours, and splits into several
@@ -975,18 +984,18 @@ confirms the reservation of `transfer_id` in it.
 
 #### Migration
 
-- **Stored events.** Those written before this decision carry only `correlation_id`, which was
-  the transfer's identity. Their decoders read it as `transfer_id`, so no event is rewritten and
-  the aggregates and projectors see one shape.
-- **Messages in flight.** For one release, the consumers of both services accept `transfer_id`
-  or the old `correlation_id` in the body, and take the lineage from the AMQP properties when
-  they are there.
-- **Read models.** A migration renames the `correlation_id` column of `reservations` and
-  `credits` to `transfer_id`, with no replay.
-- **API.** `POST /api/transfers` and the deposit return `transfer_id`, and
-  `GET /api/transfers/{transfer_id}` replaces the correlation path. The `Idempotency-Key`
-  header keeps working. The OpenAPI specs change first (D12), then the e2e stories and their
-  Postman mirror, then the load test.
+The lab reset its stack's data at each step, so no stored event or message in flight was read in
+the old shape. The read models kept their data through migrations that rename the
+`correlation_id` columns of `reservations`, `credits` and `ledger_entries` to `transfer_id`.
+
+A running service would not reset. It would read the old events through an upcasting serializer,
+which renames `correlation_id` to `transfer_id` before the struct is built (Commanded's
+`struct/2` drops unknown keys), and its consumers would accept either field in the body for one
+release. It would also have to keep `batch_id = transfer_id` for the transfers started before
+the switch, so a redelivery of one of them still lands on its batch.
+
+The API changed in the order of D12: the OpenAPI specs first, then the controllers, the e2e
+stories and their Postman mirror, then the load test.
 
 #### Rejected
 
