@@ -206,6 +206,9 @@ stateDiagram-v2
 Opening an account that exists, or closing one already closed, does nothing (D4). Closing an
 account that never existed fails with `account_not_found`.
 
+♻️ **Lifespan:** the account's process leaves memory after 5 minutes without a command, and the
+next command rebuilds it from its stream.
+
 ## Commands
 
 Commands arrive as JSON on `ledger.commands`, with the `type` as an AMQP property. The

@@ -29,6 +29,8 @@ defmodule Accounts.Router do
       Commands.PostCredit,
       Commands.CancelCredit
     ],
-    to: CustomerAccount
+    to: CustomerAccount,
+    # An account's process leaves memory after 5 minutes without a command.
+    lifespan: CustomerAccount
   )
 end

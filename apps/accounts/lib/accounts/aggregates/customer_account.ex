@@ -1,7 +1,12 @@
 defmodule Accounts.Aggregates.CustomerAccount do
   @moduledoc """
   Aggregate guarding a customer account's lifecycle, modeled as an FSM.
+
+  Its process leaves memory after 5 minutes without a command, longer than the gap between the
+  steps of a transfer. The next command rebuilds it from its stream.
   """
+
+  @behaviour Commanded.Aggregates.AggregateLifespan
 
   alias Accounts.Commands.ActivateCustomerAccount
   alias Accounts.Commands.AuthorizeCredit
@@ -42,6 +47,8 @@ defmodule Accounts.Aggregates.CustomerAccount do
     decided_credits: MapSet.new(),
     posted_credits: MapSet.new()
   ]
+
+  @idle_timeout :timer.minutes(5)
 
   # Debit and credit columns of the matrix (README, section 3.1).
   @can_send [:active]
@@ -248,6 +255,15 @@ defmodule Accounts.Aggregates.CustomerAccount do
         reservations: Map.delete(account.reservations, event.correlation_id)
     }
   end
+
+  @impl Commanded.Aggregates.AggregateLifespan
+  def after_event(_event), do: @idle_timeout
+
+  @impl Commanded.Aggregates.AggregateLifespan
+  def after_command(_command), do: @idle_timeout
+
+  @impl Commanded.Aggregates.AggregateLifespan
+  def after_error(_error), do: @idle_timeout
 
   defp decide_reservation(account, command) do
     case check_reservation(account, command) do

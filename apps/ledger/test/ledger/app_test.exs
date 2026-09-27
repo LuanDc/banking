@@ -57,6 +57,15 @@ defmodule Ledger.AppTest do
     assert alive?(LedgerAccount, "ledger-account-" <> account_id)
   end
 
+  test "keeps an account's process until it has gone 5 minutes without a command" do
+    account_id = Ecto.UUID.generate()
+
+    assert :ok = App.dispatch(%OpenLedgerAccount{account_id: account_id})
+
+    pid = Registration.whereis_name(App, {App, LedgerAccount, "ledger-account-" <> account_id})
+    assert :sys.get_state(pid).lifespan_timeout == :timer.minutes(5)
+  end
+
   defp alive?(aggregate, uuid) do
     is_pid(Registration.whereis_name(App, {App, aggregate, uuid}))
   end

@@ -2,7 +2,12 @@ defmodule Ledger.Aggregates.LedgerAccount do
   @moduledoc """
   Aggregate for an account in the chart of accounts. Its lifecycle is minimal on purpose, OPEN
   and CLOSED: business rules about who may send or receive money live in Accounts (README, D5).
+
+  Its process leaves memory after 5 minutes without a command. The next command rebuilds it
+  from its stream.
   """
+
+  @behaviour Commanded.Aggregates.AggregateLifespan
 
   alias Ledger.Commands.CloseLedgerAccount
   alias Ledger.Commands.OpenLedgerAccount
@@ -10,6 +15,8 @@ defmodule Ledger.Aggregates.LedgerAccount do
   alias Ledger.Events.LedgerAccountOpened
 
   defstruct [:account_id, :status]
+
+  @idle_timeout :timer.minutes(5)
 
   def execute(%__MODULE__{status: nil}, %OpenLedgerAccount{} = command) do
     %LedgerAccountOpened{account_id: command.account_id}
@@ -33,4 +40,13 @@ defmodule Ledger.Aggregates.LedgerAccount do
   def apply(%__MODULE__{} = account, %LedgerAccountClosed{}) do
     %__MODULE__{account | status: :closed}
   end
+
+  @impl Commanded.Aggregates.AggregateLifespan
+  def after_event(_event), do: @idle_timeout
+
+  @impl Commanded.Aggregates.AggregateLifespan
+  def after_command(_command), do: @idle_timeout
+
+  @impl Commanded.Aggregates.AggregateLifespan
+  def after_error(_error), do: @idle_timeout
 end

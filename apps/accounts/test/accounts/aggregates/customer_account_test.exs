@@ -641,6 +641,20 @@ defmodule Accounts.Aggregates.CustomerAccountTest do
     end
   end
 
+  describe "lifespan" do
+    test "leaves memory after 5 minutes without a command, once an event is stored" do
+      assert CustomerAccount.after_event(%BalanceReserved{}) == :timer.minutes(5)
+    end
+
+    test "leaves memory after 5 minutes without a command, after one that stored nothing" do
+      assert CustomerAccount.after_command(%ReserveBalance{}) == :timer.minutes(5)
+    end
+
+    test "leaves memory after 5 minutes without a command, after an error" do
+      assert CustomerAccount.after_error(:account_already_exists) == :timer.minutes(5)
+    end
+  end
+
   defp active_account(available_balance),
     do: %CustomerAccount{
       account_id: "acc-1",

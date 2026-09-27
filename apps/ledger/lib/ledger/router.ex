@@ -16,7 +16,12 @@ defmodule Ledger.Router do
   identify(LedgerAccount, by: :account_id, prefix: "ledger-account-")
   identify(TransactionBatch, by: :batch_id, prefix: "transaction-batch-")
 
-  dispatch([Commands.OpenLedgerAccount, Commands.CloseLedgerAccount], to: LedgerAccount)
+  # An account's process leaves memory after 5 minutes without a command (LedgerAccount's lifespan).
+  dispatch([Commands.OpenLedgerAccount, Commands.CloseLedgerAccount],
+    to: LedgerAccount,
+    lifespan: LedgerAccount
+  )
+
   # A batch's process stops once it is decided (TransactionBatch's lifespan).
   dispatch(Commands.BookTransactionBatch, to: TransactionBatch, lifespan: TransactionBatch)
 end

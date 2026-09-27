@@ -61,4 +61,18 @@ defmodule Ledger.Aggregates.LedgerAccountTest do
                LedgerAccount.apply(account, %LedgerAccountClosed{account_id: "acc-1"})
     end
   end
+
+  describe "lifespan" do
+    test "leaves memory after 5 minutes without a command, once an event is stored" do
+      assert LedgerAccount.after_event(%LedgerAccountOpened{}) == :timer.minutes(5)
+    end
+
+    test "leaves memory after 5 minutes without a command, after one that stored nothing" do
+      assert LedgerAccount.after_command(%OpenLedgerAccount{}) == :timer.minutes(5)
+    end
+
+    test "leaves memory after 5 minutes without a command, after an error" do
+      assert LedgerAccount.after_error(:any_reason) == :timer.minutes(5)
+    end
+  end
 end

@@ -228,6 +228,11 @@ plus every `correlation_id` already decided or posted, so a redelivered message 
 - Once a transfer is in flight, freezing doesn't stop it: confirm, release, post and cancel
   ignore the status (D7).
 
+♻️ **Lifespan:** the account's process leaves memory after 5 minutes without a command, longer
+than the gap between a transfer's steps. The next command rebuilds it from its stream, which
+grows with every transfer. The `correlation_id` sets above grow with it and stay in memory while
+the process lives.
+
 ## Commands
 
 Each one is declared with `use Accounts.Command, fields: [...]` plus Vex `validates`
