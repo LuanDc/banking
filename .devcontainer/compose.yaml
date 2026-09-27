@@ -1,0 +1,44 @@
+# Added on top of the root docker-compose.yml by devcontainer.json: the container the editor
+# attaches to. It shares each app's deps and _build volumes with the running services, and
+# reaches them, Postgres and RabbitMQ by their service names. The dialyzer PLTs (`mix quality`)
+# get volumes too: a PLT built by the host's OTP is rejected here, and the other way round.
+#
+# Without VS Code, the same container runs with Docker alone:
+#
+#   docker compose -f docker-compose.yml -f .devcontainer/compose.yaml up -d
+#   docker compose -f docker-compose.yml -f .devcontainer/compose.yaml exec workspace bash
+
+name: banking
+
+# Relative paths resolve against the first file, the root docker-compose.yml, so they start at
+# the repo root.
+services:
+  workspace:
+    build: .devcontainer
+    command: sleep infinity
+    working_dir: /workspace
+    environment:
+      PGHOST: postgres
+      RABBITMQ_URL: amqp://banking:banking@rabbitmq:5672
+      # Where the e2e stories find the running services.
+      ACCOUNTS_URL: http://accounts:4000
+      LEDGER_URL: http://ledger:4001
+    volumes:
+      - .:/workspace
+      - accounts-deps:/workspace/apps/accounts/deps
+      - accounts-build:/workspace/apps/accounts/_build
+      - accounts-plts:/workspace/apps/accounts/priv/plts
+      - ledger-deps:/workspace/apps/ledger/deps
+      - ledger-build:/workspace/apps/ledger/_build
+      - ledger-plts:/workspace/apps/ledger/priv/plts
+      - e2e-deps:/workspace/apps/e2e/deps
+      - e2e-build:/workspace/apps/e2e/_build
+    depends_on:
+      - postgres
+      - rabbitmq
+
+volumes:
+  accounts-plts:
+  ledger-plts:
+  e2e-deps:
+  e2e-build:

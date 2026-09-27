@@ -1,10 +1,27 @@
-# Local infrastructure for the accounts and ledger services.
+# The whole local stack: infrastructure plus both services. Only Docker is needed.
 #
-#   docker compose up -d      # start
+#   docker compose up -d      # start (the first run compiles both services: a few minutes)
+#   docker compose logs -f accounts ledger
 #   docker compose down       # stop (data is kept in named volumes)
-#   docker compose down -v    # stop and wipe the data
+#   docker compose down -v    # stop and wipe the data, deps and builds
 #
-# The services themselves run on the host (`mix phx.server`, `mix test`).
+# To run the services on the host instead (`iex -S mix phx.server`), start only the
+# infrastructure: `docker compose up -d postgres rabbitmq swagger-ui`.
+#
+# The dev container (.devcontainer/) adds a `workspace` service to this file, for the editor,
+# `mix test` and the e2e stories.
+
+name: banking
+
+# The services run from the mounted source with the dev image (.devcontainer/Dockerfile). Each app keeps its deps and
+# _build in named volumes, shared with the workspace, so they never mix with a host build.
+x-elixir: &elixir
+  build: .devcontainer
+  environment:
+    PGHOST: postgres
+    RABBITMQ_URL: amqp://banking:banking@rabbitmq:5672
+    # Bind to every interface, so the host and the other containers reach the endpoint.
+    PHX_IP: 0.0.0.0
 
 services:
   # One Postgres server for both services. Each service keeps its own databases —
@@ -31,6 +48,9 @@ services:
   # Management UI: http://localhost:15672 (banking / banking).
   rabbitmq:
     image: rabbitmq:4-management
+    # A fixed hostname keeps the node name, and with it the data in the volume, across
+    # recreated containers.
+    hostname: rabbitmq
     environment:
       # `guest` only logs in from localhost, and published ports reach the broker
       # through Docker's network, so a dedicated user is needed.
@@ -46,6 +66,59 @@ services:
       interval: 10s
       timeout: 10s
       retries: 10
+
+  # `mix setup` on every start: it is idempotent, and its seeds open the bank's
+  # pix-settlement account, which deposits need (D13).
+  ledger:
+    <<: *elixir
+    working_dir: /workspace/apps/ledger
+    command: sh -c "mix setup && exec mix phx.server"
+    ports:
+      - "4001:4001"
+    volumes:
+      - .:/workspace
+      - ledger-deps:/workspace/apps/ledger/deps
+      - ledger-build:/workspace/apps/ledger/_build
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:4001/api/trial-balance"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      # The first start compiles everything.
+      start_period: 10m
+      start_interval: 5s
+
+  # Starts once the ledger is healthy: the ledger declares the `ledger.commands` queue, and
+  # the publisher returns a command that no queue takes (mandatory).
+  accounts:
+    <<: *elixir
+    working_dir: /workspace/apps/accounts
+    command: sh -c "mix setup && exec mix phx.server"
+    ports:
+      - "4000:4000"
+    volumes:
+      - .:/workspace
+      - accounts-deps:/workspace/apps/accounts/deps
+      - accounts-build:/workspace/apps/accounts/_build
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      ledger:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:4000/api/accounts?customer_id=healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10m
+      start_interval: 5s
 
   # Proposed HTTP APIs of both services (OpenAPI 3.1), one spec each, picked from
   # the dropdown: http://localhost:8080. The specs are mounted, so a reload shows
@@ -66,3 +139,7 @@ services:
 volumes:
   postgres-data:
   rabbitmq-data:
+  accounts-deps:
+  accounts-build:
+  ledger-deps:
+  ledger-build:

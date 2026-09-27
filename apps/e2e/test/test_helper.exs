@@ -16,7 +16,11 @@ end
 start_hint = """
 Start the stack first (see apps/e2e/README.md):
 
-    docker compose up -d
+    docker compose up -d --wait     # from the repo root: infrastructure and both services
+
+Or, with the services on the host, only the infrastructure in Docker:
+
+    docker compose up -d postgres rabbitmq swagger-ui
     (cd apps/ledger && iex -S mix phx.server)
     (cd apps/accounts && iex -S mix phx.server)
 """

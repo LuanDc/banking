@@ -1,10 +1,23 @@
 import Config
 
+# The defaults match docker-compose.yml's published ports on the host; inside the Docker stack
+# (docker-compose.yml, .devcontainer/) PGHOST and RABBITMQ_URL point at the service names.
+pg_host = System.get_env("PGHOST", "localhost")
+rabbitmq_url = System.get_env("RABBITMQ_URL", "amqp://banking:banking@localhost:5672")
+
+# The endpoint listens on loopback on the host. docker-compose.yml sets PHX_IP=0.0.0.0, so the
+# host and the other containers reach it.
+{:ok, http_ip} =
+  "PHX_IP"
+  |> System.get_env("127.0.0.1")
+  |> String.to_charlist()
+  |> :inet.parse_address()
+
 # Configure your database
 config :accounts, Accounts.Repo,
   username: "postgres",
   password: "postgres",
-  hostname: "localhost",
+  hostname: pg_host,
   database: "accounts_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
@@ -15,16 +28,14 @@ config :accounts, Accounts.EventStore,
   serializer: Commanded.Serialization.JsonSerializer,
   username: "postgres",
   password: "postgres",
-  hostname: "localhost",
+  hostname: pg_host,
   database: "accounts_eventstore_dev",
   pool_size: 10
 
 # RabbitMQ from docker-compose.yml.
-config :accounts, Accounts.Messaging.LedgerEventsConsumer,
-  url: "amqp://banking:banking@localhost:5672"
+config :accounts, Accounts.Messaging.LedgerEventsConsumer, url: rabbitmq_url
 
-config :accounts, Accounts.Messaging.RabbitMQPublisher,
-  url: "amqp://banking:banking@localhost:5672"
+config :accounts, Accounts.Messaging.RabbitMQPublisher, url: rabbitmq_url
 
 # For development, we disable any cache and enable
 # debugging and code reloading.
@@ -33,9 +44,7 @@ config :accounts, Accounts.Messaging.RabbitMQPublisher,
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
 config :accounts, AccountsWeb.Endpoint,
-  # Binding to loopback ipv4 address prevents access from other machines.
-  # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
-  http: [ip: {127, 0, 0, 1}, port: 4000],
+  http: [ip: http_ip, port: 4000],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,

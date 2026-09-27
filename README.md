@@ -93,14 +93,25 @@ transfers, compensation, closing, and redelivered messages. Each one checks that
 
 ## Quick start
 
+> 🐳 **Only Docker is needed.** No Elixir, Postgres or RabbitMQ on your machine.
+
 ```bash
-docker compose up -d                # Postgres, RabbitMQ and Swagger UI
-(cd apps/ledger && mix setup)       # the ledger first: its seeds open the PIX settlement account
-(cd apps/accounts && mix setup)
+docker compose up -d --wait         # Postgres, RabbitMQ, Swagger UI, ledger and accounts
 ```
 
-Then start each service with `iex -S mix phx.server` in its own terminal. Each service's
-[run in dev](apps/accounts/README.md#run-in-dev) guide has the details.
+The first run builds the dev image and compiles both services, so give it a few minutes. Each
+service runs `mix setup` on start, so the databases, the event stores and the ledger's seeds are
+ready when `--wait` returns.
+
+| I want to… | How |
+| --- | --- |
+| 💻 Code, test and run the e2e stories in an editor | Open the repo in VS Code and pick **Reopen in Container** ([`.devcontainer/`](.devcontainer/devcontainer.json)) |
+| 🐚 Get the same shell without VS Code | `docker compose -f docker-compose.yml -f .devcontainer/compose.yaml up -d`, then `... exec workspace bash` |
+| 📜 Follow the services' logs | `docker compose logs -f accounts ledger` |
+| 🧹 Start from scratch | `docker compose down -v` |
+
+Each service's [run in dev](apps/accounts/README.md#run-in-dev) guide has the details, including
+how to run the services on the host with your own Elixir.
 
 | Service | URL |
 | --- | --- |
@@ -118,7 +129,8 @@ Then start each service with `iex -S mix phx.server` in its own terminal. Each s
 │   ├── accounts/            # Account Management Context (Phoenix service)
 │   ├── ledger/              # Ledger Context (Phoenix service)
 │   └── e2e/                 # story tests across both running services
-├── docker-compose.yml       # Postgres, RabbitMQ, Swagger UI
+├── .devcontainer/           # dev image and the workspace container for VS Code
+├── docker-compose.yml       # the whole stack: Postgres, RabbitMQ, Swagger UI, both services
 └── CLAUDE.md                # conventions for AI-assisted work on the repo
 ```
 

@@ -60,11 +60,28 @@ flowchart LR
 
 ## Run in dev
 
-> 🐳 Needs Docker and Elixir 1.18 / OTP 25+. A devcontainer is planned.
+### 🐳 With Docker only
 
 ```bash
-# 1. Infrastructure, from the repo root: Postgres, RabbitMQ, Swagger UI
-docker compose up -d
+# From the repo root: infrastructure plus both services, each one running `mix setup` first
+docker compose up -d --wait
+docker compose logs -f accounts
+```
+
+The service runs from the mounted source, so an edit reloads on the next request. It starts
+after the ledger is healthy, since the ledger declares the queue this service sends commands to.
+
+For `mix test`, `mix quality` and an `iex` shell, open the repo in the dev container (VS Code:
+**Reopen in Container**) and run them from `apps/accounts`. Postgres and RabbitMQ are reached
+by service name (`PGHOST`, `RABBITMQ_URL`).
+
+### 💻 On the host
+
+Needs Elixir 1.18 / OTP 25+. Docker runs only the infrastructure:
+
+```bash
+# 1. From the repo root: Postgres, RabbitMQ, Swagger UI
+docker compose up -d postgres rabbitmq swagger-ui
 
 # 2. The ledger first: its seeds open the bank's PIX settlement account, which deposits need
 (cd apps/ledger && mix setup)

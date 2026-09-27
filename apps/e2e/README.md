@@ -53,23 +53,26 @@ sequenceDiagram
 
 ## Run it
 
-> 🐳 Needs the whole stack running. A devcontainer is planned to do this in one step.
+> 🐳 Needs the whole stack running: `docker compose up -d --wait` from the repo root starts it.
+
+**In the dev container** (VS Code: **Reopen in Container**), where `ACCOUNTS_URL`, `LEDGER_URL`
+and `RABBITMQ_URL` already point at the services:
 
 ```bash
-# From the repo root
-docker compose up -d
-(cd apps/ledger && mix setup)       # first time only: its seeds open the PIX settlement account
-(cd apps/accounts && mix setup)     # first time only
+cd apps/e2e
+mix test
+```
 
-# Two terminals
-(cd apps/ledger && iex -S mix phx.server)
-(cd apps/accounts && iex -S mix phx.server)
+**On the host**, with your own Elixir, against the published ports (the defaults):
 
-# Then
+```bash
 cd apps/e2e
 mix deps.get
 mix test
 ```
+
+The services can also run on the host instead of in Docker (see each service's
+[run in dev](../accounts/README.md#run-in-dev)). The suite doesn't care where they run.
 
 If a service is down, `test_helper.exs` stops right away and tells you what to start.
 Point the suite elsewhere with `ACCOUNTS_URL`, `LEDGER_URL` and `RABBITMQ_URL`.
@@ -104,7 +107,8 @@ per test with the same requests and assertions, so you can double-check by hand.
 | File | What it is |
 | --- | --- |
 | [⬇️ `banking.postman_collection.json`](postman/banking.postman_collection.json?raw=true) | the 17 stories, grouped by test file |
-| [⬇️ `local.postman_environment.json`](postman/local.postman_environment.json?raw=true) | URLs and RabbitMQ credentials for the local stack |
+| [⬇️ `local.postman_environment.json`](postman/local.postman_environment.json?raw=true) | URLs and RabbitMQ credentials for the local stack, from the host |
+| [⬇️ `devcontainer.postman_environment.json`](postman/devcontainer.postman_environment.json?raw=true) | the same, by service name, for Newman inside the dev container |
 
 1. In Postman, **Import** both files and select the `local` environment.
 2. Open a story folder and click **Run** (Collection Runner).
@@ -120,6 +124,10 @@ From the terminal, the same collection runs with Newman:
 ```bash
 npx newman run apps/e2e/postman/banking.postman_collection.json \
   -e apps/e2e/postman/local.postman_environment.json
+
+# Inside the dev container (Newman is already installed there)
+newman run apps/e2e/postman/banking.postman_collection.json \
+  -e apps/e2e/postman/devcontainer.postman_environment.json
 ```
 
 > 🧭 The ExUnit stories are the source of truth. The collection is a mirror: a change to a story

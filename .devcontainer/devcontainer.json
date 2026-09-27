@@ -1,0 +1,21 @@
+{
+  "name": "banking",
+  // The whole stack from the root docker-compose.yml (Postgres, RabbitMQ, Swagger UI, ledger,
+  // accounts), plus the workspace container from compose.yaml, which the editor attaches to.
+  "dockerComposeFile": ["../docker-compose.yml", "compose.yaml"],
+  "service": "workspace",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+  // The services fetch their own deps; only the e2e app is left.
+  "postCreateCommand": "cd apps/e2e && mix deps.get",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "JakeBecker.elixir-ls",
+        "phoenixframework.phoenix",
+        "redhat.vscode-yaml",
+        "bierner.markdown-mermaid"
+      ]
+    }
+  }
+}

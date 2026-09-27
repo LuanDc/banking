@@ -80,8 +80,19 @@ All docs are in English, written for developers who find the repo on GitHub.
 
 ## Local setup
 
-`docker compose up -d` starts Postgres, RabbitMQ (management UI on :15672, user and password
-`banking`) and Swagger UI (:8080). The services run on the host: accounts on :4000 and ledger on
-:4001.
+Only Docker is required. `docker compose up -d --wait` starts Postgres, RabbitMQ (management UI
+on :15672, user and password `banking`), Swagger UI (:8080) and both services from the mounted
+source with the dev image (`.devcontainer/Dockerfile`): ledger on :4001, then accounts
+on :4000. Each runs `mix setup` on start. Their `deps` and `_build` live in named volumes, never
+in the host's directories.
+
+- `.devcontainer/` adds a `workspace` container (VS Code's **Reopen in Container**, or
+  `docker compose -f docker-compose.yml -f .devcontainer/compose.yaml exec workspace bash`) for
+  `mix test`, `mix quality`, the e2e stories and Newman. Inside it, use the `devcontainer`
+  Postman environment instead of `local`.
+- The dev and test configs read `PGHOST`, `RABBITMQ_URL` and (dev) `PHX_IP`; the defaults are
+  the host's `localhost`, so running a service on the host still works: start only
+  `postgres rabbitmq swagger-ui`, and stop the Docker service on the same port first.
+
 The Ledger's seeds (`mix run priv/repo/seeds.exs`, part of `mix setup`) open the bank's
 `pix-settlement` account. Deposits need it, since an inbound PIX debits it (D13).
