@@ -102,6 +102,24 @@ defmodule Ledger.Aggregates.TransactionBatchTest do
     end
   end
 
+  describe "lifespan" do
+    test "stops the batch once it is booked" do
+      assert TransactionBatch.after_event(%LedgerBatchBooked{}) == :stop
+    end
+
+    test "stops the batch once it is rejected" do
+      assert TransactionBatch.after_event(%LedgerBatchRejected{}) == :stop
+    end
+
+    test "stops a decided batch after a redelivered command, which books nothing" do
+      assert TransactionBatch.after_command(%BookTransactionBatch{}) == :stop
+    end
+
+    test "stops the batch after an error, since a retry rebuilds it from its one event at most" do
+      assert TransactionBatch.after_error(:any_reason) == :stop
+    end
+  end
+
   defp book(entries, batch \\ %TransactionBatch{}) do
     command = %BookTransactionBatch{
       batch_id: "batch-1",

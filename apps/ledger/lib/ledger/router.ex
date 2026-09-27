@@ -17,5 +17,6 @@ defmodule Ledger.Router do
   identify(TransactionBatch, by: :batch_id, prefix: "transaction-batch-")
 
   dispatch([Commands.OpenLedgerAccount, Commands.CloseLedgerAccount], to: LedgerAccount)
-  dispatch(Commands.BookTransactionBatch, to: TransactionBatch)
+  # A batch's process stops once it is decided (TransactionBatch's lifespan).
+  dispatch(Commands.BookTransactionBatch, to: TransactionBatch, lifespan: TransactionBatch)
 end

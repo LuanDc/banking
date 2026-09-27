@@ -1,7 +1,13 @@
 defmodule Ledger.Aggregates.TransactionBatch do
   @moduledoc """
   Aggregate guarding the double-entry invariant: the debits of a batch equal its credits.
+
+  A batch is decided by its first command, so its process stops right after it: each transfer
+  and deposit makes a new batch, and one kept alive for good holds memory forever. A later
+  command, such as a redelivery, rebuilds it from its single event.
   """
+
+  @behaviour Commanded.Aggregates.AggregateLifespan
 
   alias Ledger.Commands.BookTransactionBatch
   alias Ledger.Events.LedgerBatchBooked
@@ -40,6 +46,16 @@ defmodule Ledger.Aggregates.TransactionBatch do
   def apply(%__MODULE__{} = batch, %LedgerBatchRejected{} = event) do
     %__MODULE__{batch | batch_id: event.batch_id, status: :rejected}
   end
+
+  @impl Commanded.Aggregates.AggregateLifespan
+  def after_event(%LedgerBatchBooked{}), do: :stop
+  def after_event(%LedgerBatchRejected{}), do: :stop
+
+  @impl Commanded.Aggregates.AggregateLifespan
+  def after_command(%BookTransactionBatch{}), do: :stop
+
+  @impl Commanded.Aggregates.AggregateLifespan
+  def after_error(_reason), do: :stop
 
   defp validate(%BookTransactionBatch{entries: []}), do: {:error, :empty}
 

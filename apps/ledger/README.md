@@ -185,6 +185,11 @@ it becomes a `LedgerBatchRejected` event, so the sender hears back and compensat
 | `unbalanced` | debits ≠ credits |
 | `account_not_open` | an entry touches an account that is not open (D5) |
 
+♻️ **Lifespan:** the batch's process stops as soon as its command is handled (booked,
+rejected, a redelivery or an error), through the aggregate's `AggregateLifespan` callbacks set in
+the router. Every transfer and deposit makes a new batch, so one kept alive would hold memory
+forever. A later command rebuilds the batch from its one event.
+
 ### 🟨 `LedgerAccount`
 
 [`lib/ledger/aggregates/ledger_account.ex`](lib/ledger/aggregates/ledger_account.ex): the chart of accounts, one
