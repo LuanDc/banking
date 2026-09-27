@@ -61,7 +61,7 @@ Start here to understand *why* the code looks the way it does.
 | See how the two contexts relate | [6 · Context Map](docs/event_storming.md#6-context-map) |
 | Browse every command, event and policy | [7 · Inventory](docs/event_storming.md#7-inventory-of-commands-events-and-aggregates) |
 | See the open questions and how each was settled | [8 · Hotspots](docs/event_storming.md#8-hotspots--open-decisions) |
-| Read the trade-offs (D1…D17) | [10 · Design decisions](docs/event_storming.md#10-design-decisions) |
+| Read the trade-offs (D1…D18) | [10 · Design decisions](docs/event_storming.md#10-design-decisions) |
 
 ### 🧩 The services
 

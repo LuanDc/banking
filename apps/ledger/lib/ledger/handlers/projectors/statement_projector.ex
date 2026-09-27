@@ -9,6 +9,7 @@ defmodule Ledger.Handlers.Projectors.StatementProjector do
     name: "statement_projector"
 
   alias Ledger.Events.LedgerBatchBooked
+  alias Ledger.Handlers.ProjectorFailures
   alias Ledger.Projections.StatementEntry
 
   project %LedgerBatchBooked{} = event, metadata, fn multi ->
@@ -29,6 +30,11 @@ defmodule Ledger.Handlers.Projectors.StatementProjector do
 
     Ecto.Multi.insert_all(multi, :ledger_entries, StatementEntry, entries)
   end
+
+  # README, D18: waits out the infrastructure, and stops on a bug.
+  @impl Commanded.Event.Handler
+  def error(error, event, failure_context),
+    do: ProjectorFailures.error(error, event, failure_context)
 
   # `mix commanded.reset` calls this before replaying the event store from the origin (README,
   # D11): the read model and its version start empty.

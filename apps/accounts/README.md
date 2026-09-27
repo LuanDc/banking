@@ -297,6 +297,11 @@ not from the payload.
 **Read models** (`accounts_dev`) have one owning projector per table, and can be rebuilt with
 `mix commanded.reset` (D11).
 
+🏗️ **When a projector fails** (`Accounts.Handlers.ProjectorFailures`, D18): an error of the database
+(pool, connection, timeout, deadlock) is retried with a delay from 100 ms up to 30 s, for as long
+as it takes, and shows as the subscription's lag. Any other error is a bug: the projector stops,
+and past its restarts the service with it.
+
 ```mermaid
 erDiagram
     customer_accounts ||--o{ customer_account_status_changes : "history"

@@ -1014,3 +1014,47 @@ stories and their Postman mirror, then the load test.
 - Whether a reservation should expire, which would revisit D6. With `transfer_id`, a saga
   timeout could release the reservation, and the Ledger would refuse a late batch because the
   settlement of that `transfer_id` is already decided.
+
+### D18 · A projector waits out the infrastructure and stops on a bug
+
+It amends D11. The load test of D16 took Accounts down at 80 operations per second. The Postgres
+container, capped at 1 CPU, saturated for a few seconds (an autovacuum on top of a checkpoint).
+The pool then dropped requests that waited longer than its target, and the projectors got a
+`DBConnection.ConnectionError`. Commanded's default answer to a handler's error is to stop it.
+The supervisor restarted each projector on the same event, the event failed again, and past
+`max_restarts` the whole application shut down. A slowdown of the database became an outage of
+the service, and the event was never at fault.
+
+The saga (`LedgerRouter`) and the outboxes (`LedgerCommandsPublisher`, `LedgerEventsPublisher`)
+already retried any failure forever, with a growing delay. The projectors had no `error/3` at
+all. Each projector now hands its errors to `<App>.Handlers.ProjectorFailures`, which sorts them
+by what a retry can change:
+
+| The error | Examples | What the projector does |
+| --- | --- | --- |
+| 🏗️ The infrastructure's | `DBConnection.ConnectionError` (pool, dropped connection); Postgrex errors of class `08` (connection), `53` (resources), `57` (shutdown, statement timeout), `40001` and `40P01` (serialization, deadlock) | Retries for as long as it takes. The delay starts at 100 ms and doubles up to 30 s |
+| 🐛 The code's or the data's | anything else: a bug, a constraint the event breaks, a `FunctionClauseError` | Stops, as before. Past its restarts, the application stops with it |
+
+- **Waiting is right for the infrastructure.** The event is valid and the database comes back.
+  Skipping it would leave the read model wrong without a sign. Stopping gives the outage above.
+  Meanwhile the subscription stays on that event, since a projection is applied in order. It
+  shows as the subscription's lag on the dashboard, and each attempt logs a warning with its
+  number.
+- **Crashing is right for a bug.** The same event fails the same way every time, so no retry
+  helps, and skipping it would serve a read model that silently lacks an event. A service that
+  dies on a new release is what a container manager can act on: it sees the release fail its
+  health check and rolls back to the previous one, which projects the event as before. The
+  event store keeps the event (D11), so nothing is lost while the fix ships.
+
+Rejected: parking the event in a dead-letter table and moving on. It keeps the service up, but
+with a read model that lacks the event until someone replays it, and it has to write to the same
+database whose failure it may be handling. Rejected: a larger pool. The pool was not the
+bottleneck: the database's CPU was, and more connections would have run more queries on the same
+CPU, each slower. The pool of 10 caps the concurrency the database has to serve. Rejected: longer
+`queue_target` and `queue_interval` alone. They trade a dropped request for a longer wait, which
+rides out a spike but not a sustained overload, and the projectors would still stop at the first
+drop.
+
+**Open:** a container manager with health checks and automatic rollback, which the local stack
+does not have. Whether the saga and the outboxes should also stop on a failure that no retry can
+fix, instead of retrying it forever.

@@ -22,6 +22,7 @@ defmodule Accounts.Handlers.Projectors.CustomerAccountsProjector do
   alias Accounts.Events.CustomerAccountOpened
   alias Accounts.Events.CustomerAccountUnblocked
   alias Accounts.Events.CustomerAccountUnfrozen
+  alias Accounts.Handlers.ProjectorFailures
   alias Accounts.Projections.CustomerAccount
   alias Accounts.Projections.StatusChange
 
@@ -101,6 +102,11 @@ defmodule Accounts.Handlers.Projectors.CustomerAccountsProjector do
   end
 
   defp account(event), do: from(a in CustomerAccount, where: a.account_id == ^event.account_id)
+
+  # README, D18: waits out the infrastructure, and stops on a bug.
+  @impl Commanded.Event.Handler
+  def error(error, event, failure_context),
+    do: ProjectorFailures.error(error, event, failure_context)
 
   # `mix commanded.reset` calls this before replaying the event store from the origin (README,
   # D11): the read model and its version start empty.

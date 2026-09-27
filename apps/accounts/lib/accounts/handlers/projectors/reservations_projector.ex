@@ -13,6 +13,7 @@ defmodule Accounts.Handlers.Projectors.ReservationsProjector do
   alias Accounts.Events.BalanceReservationRejected
   alias Accounts.Events.BalanceReserved
   alias Accounts.Events.ReservationConfirmed
+  alias Accounts.Handlers.ProjectorFailures
   alias Accounts.Projections.Reservation
 
   project %BalanceReserved{} = event, metadata, fn multi ->
@@ -56,6 +57,11 @@ defmodule Accounts.Handlers.Projectors.ReservationsProjector do
       set: [status: status, settled_at: metadata.created_at]
     )
   end
+
+  # README, D18: waits out the infrastructure, and stops on a bug.
+  @impl Commanded.Event.Handler
+  def error(error, event, failure_context),
+    do: ProjectorFailures.error(error, event, failure_context)
 
   # `mix commanded.reset` calls this before replaying the event store from the origin (README,
   # D11): the read model and its version start empty.

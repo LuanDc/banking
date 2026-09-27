@@ -13,6 +13,7 @@ defmodule Accounts.Handlers.Projectors.CreditsProjector do
   alias Accounts.Events.CreditCancelled
   alias Accounts.Events.CreditPosted
   alias Accounts.Events.CreditRejected
+  alias Accounts.Handlers.ProjectorFailures
   alias Accounts.Projections.Credit
 
   project %CreditAuthorized{} = event, metadata, fn multi ->
@@ -60,6 +61,11 @@ defmodule Accounts.Handlers.Projectors.CreditsProjector do
       amount: event.amount
     }
   end
+
+  # README, D18: waits out the infrastructure, and stops on a bug.
+  @impl Commanded.Event.Handler
+  def error(error, event, failure_context),
+    do: ProjectorFailures.error(error, event, failure_context)
 
   # `mix commanded.reset` calls this before replaying the event store from the origin (README,
   # D11): the read model and its version start empty.

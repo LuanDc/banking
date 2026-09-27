@@ -14,6 +14,7 @@ defmodule Ledger.Handlers.Projectors.LedgerAccountsProjector do
 
   alias Ledger.Events.LedgerAccountClosed
   alias Ledger.Events.LedgerAccountOpened
+  alias Ledger.Handlers.ProjectorFailures
   alias Ledger.Projections.LedgerAccount
 
   project %LedgerAccountOpened{} = event, metadata, fn multi ->
@@ -32,6 +33,11 @@ defmodule Ledger.Handlers.Projectors.LedgerAccountsProjector do
       set: [status: :closed, closed_at: metadata.created_at]
     )
   end
+
+  # README, D18: waits out the infrastructure, and stops on a bug.
+  @impl Commanded.Event.Handler
+  def error(error, event, failure_context),
+    do: ProjectorFailures.error(error, event, failure_context)
 
   # `mix commanded.reset` calls this before replaying the event store from the origin (README,
   # D11): the read model and its version start empty.
