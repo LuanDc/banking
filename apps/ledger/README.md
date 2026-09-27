@@ -10,7 +10,7 @@ no other context: it takes commands and publishes its own events.
 | --- | --- |
 | 🌐 HTTP (read-only) | http://localhost:4001/api |
 | 📖 Swagger | [⬇️ `priv/openapi.yaml`](priv/openapi.yaml?raw=true) · http://localhost:8080 |
-| 🗄️ Databases | `ledger_eventstore_dev` (events) · `ledger_dev` (read models) · `_prod` in Docker |
+| 🗄️ Databases | `ledger_eventstore_dev` (events) · `ledger_dev` (read models) · `*_prod` in prod mode |
 | 🐇 Talks to | whoever sends to `ledger.commands` and listens on `ledger.events` |
 
 **Contents:** [How it works](#how-it-works) · [Tech stack](#tech-stack) · [Run in dev](#run-in-dev) ·
@@ -60,20 +60,21 @@ flowchart LR
 
 ### 🐳 With Docker only
 
-```bash
-# From the repo root: infrastructure plus both services, each one a release image
-docker compose up -d --wait
-docker compose logs -f ledger
+The service runs in dev mode in the dev container, and in prod mode from the root compose file
+alone ([Switch modes](../../README.md#switch-modes)):
 
-# After a code change: rebuild the image and restart
-docker compose up -d --build --wait ledger
+```bash
+# From the repo root. 🛠️ Dev: mounted source, an edit reloads on the next request (`mix setup` first)
+docker compose -f docker-compose.yml -f .devcontainer/compose.yaml up -d --wait
+# 🚀 Prod: a release image built by Dockerfile, for the e2e stories and load tests (`bin/setup` first)
+docker compose up -d --build --wait
+docker compose logs -f ledger
 ```
 
-The container runs the service in production mode: [`Dockerfile`](Dockerfile) builds a `mix
-release` (no Elixir or source code in the final image), and `Ledger.Release`
-([`lib/ledger/release.ex`](lib/ledger/release.ex)) does what Mix would. Its `bin/setup`, the
-release's `mix setup`, runs on every start. It is idempotent, seeds included. It uses the
-`ledger_prod` and `ledger_eventstore_prod` databases.
+In prod, [`Dockerfile`](Dockerfile) builds a `mix release` (no Elixir or source code in the
+final image), and `Ledger.Release` ([`lib/ledger/release.ex`](lib/ledger/release.ex)) does what
+`mix setup` does in dev, on the `*_prod` databases. Its setup runs on every start. It is
+idempotent, seeds included.
 
 For `mix test`, `mix quality` and an `iex` shell, open the repo in the dev container (VS Code:
 **Reopen in Container**) and run them from `apps/ledger`. Postgres and RabbitMQ are reached by

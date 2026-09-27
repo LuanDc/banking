@@ -69,6 +69,7 @@ services:
 
   # Its setup runs the seeds, which open the bank's pix-settlement account; deposits need it (D13).
   ledger:
+    image: banking-ledger
     build: apps/ledger
     command: sh -c "bin/setup && exec bin/server"
     environment:
@@ -94,6 +95,7 @@ services:
   # Starts once the ledger is healthy: the ledger declares the `ledger.commands` queue, and
   # the publisher returns a command that no queue takes (mandatory).
   accounts:
+    image: banking-accounts
     build: apps/accounts
     command: sh -c "bin/setup && exec bin/server"
     environment:

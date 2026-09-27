@@ -1,22 +1,69 @@
-# Added on top of the root docker-compose.yml by devcontainer.json: the container the editor
-# attaches to, with the dev image (Dockerfile next to this file). The running services are
-# release images of their own, so each app's deps and _build live in this container's named
-# volumes, never in the host's directories. It reaches the services, Postgres and RabbitMQ by
-# their service names. The dialyzer PLTs (`mix quality`) live under _build, so the container's
-# never clash with the host's.
+# Added on top of the root docker-compose.yml by devcontainer.json: the development environment.
+# It turns the ledger and accounts services into dev mode (MIX_ENV=dev, mounted source, code
+# reloading) and adds the workspace container the editor attaches to. The root file alone runs
+# them as prod releases, for the e2e stories and load tests. Both share the project name, so one
+# mode runs at a time: starting either recreates the two services in its mode.
 #
-# Without VS Code, the same container runs with Docker alone:
+# All three containers use the dev image (Dockerfile next to this file). Each app keeps its deps
+# and _build in named volumes, shared by its service and the workspace, never in the host's
+# directories. The dialyzer PLTs (`mix quality`) live under _build, so the container's never
+# clash with the host's.
 #
-#   docker compose -f docker-compose.yml -f .devcontainer/compose.yaml up -d
+# Without VS Code, the same containers run with Docker alone:
+#
+#   docker compose -f docker-compose.yml -f .devcontainer/compose.yaml up -d --wait
 #   docker compose -f docker-compose.yml -f .devcontainer/compose.yaml exec workspace bash
 
 name: banking
 
+# The dev image, named apart from the release images (banking-ledger, banking-accounts), so
+# neither mode overwrites the other's.
+x-dev-image: &dev-image
+  image: banking-dev
+  build: .devcontainer
+
+# Replaces the prod environment of the root file: the dev config reads PGHOST and builds the
+# database names itself (*_dev).
+x-dev-env: &dev-env
+  PGHOST: postgres
+  RABBITMQ_URL: amqp://banking:banking@rabbitmq:5672
+  # Bind to every interface, so the host and the other containers reach the endpoint.
+  PHX_IP: 0.0.0.0
+
 # Relative paths resolve against the first file, the root docker-compose.yml, so they start at
 # the repo root.
 services:
+  # `mix setup` on every start: it is idempotent, and its seeds open the bank's
+  # pix-settlement account, which deposits need (D13).
+  ledger:
+    <<: *dev-image
+    working_dir: /workspace/apps/ledger
+    command: sh -c "mix setup && exec mix phx.server"
+    environment: !override
+      <<: *dev-env
+    volumes:
+      - .:/workspace
+      - ledger-deps:/workspace/apps/ledger/deps
+      - ledger-build:/workspace/apps/ledger/_build
+    healthcheck:
+      # The first start compiles everything.
+      start_period: 10m
+
+  accounts:
+    <<: *dev-image
+    working_dir: /workspace/apps/accounts
+    command: sh -c "mix setup && exec mix phx.server"
+    environment: !override
+      <<: *dev-env
+    volumes:
+      - .:/workspace
+      - accounts-deps:/workspace/apps/accounts/deps
+      - accounts-build:/workspace/apps/accounts/_build
+    healthcheck:
+      start_period: 10m
+
   workspace:
-    build: .devcontainer
+    <<: *dev-image
     command: sleep infinity
     working_dir: /workspace
     environment:

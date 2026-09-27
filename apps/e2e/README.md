@@ -53,7 +53,8 @@ sequenceDiagram
 
 ## Run it
 
-> 🐳 Needs the whole stack running: `docker compose up -d --wait` from the repo root starts it.
+> 🐳 Needs the whole stack running, in either mode. Prod, the one meant for it:
+> `docker compose up -d --build --wait` from the repo root. The dev container runs it in dev mode.
 
 **In the dev container** (VS Code: **Reopen in Container**), where `ACCOUNTS_URL`, `LEDGER_URL`
 and `RABBITMQ_URL` already point at the services:

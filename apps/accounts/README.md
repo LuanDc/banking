@@ -9,7 +9,7 @@ its available balance, and the transfer saga. The actual money book is the [📒
 | --- | --- |
 | 🌐 HTTP | http://localhost:4000/api |
 | 📖 Swagger | [⬇️ `priv/openapi.yaml`](priv/openapi.yaml?raw=true) · http://localhost:8080 |
-| 🗄️ Databases | `accounts_eventstore_dev` (events) · `accounts_dev` (read models) · `_prod` in Docker |
+| 🗄️ Databases | `accounts_eventstore_dev` (events) · `accounts_dev` (read models) · `*_prod` in prod mode |
 | 🐇 Talks to | `ledger` through RabbitMQ only |
 
 **Contents:** [How it works](#how-it-works) · [Tech stack](#tech-stack) · [Run in dev](#run-in-dev) ·
@@ -62,20 +62,21 @@ flowchart LR
 
 ### 🐳 With Docker only
 
-```bash
-# From the repo root: infrastructure plus both services, each one a release image
-docker compose up -d --wait
-docker compose logs -f accounts
+The service runs in dev mode in the dev container, and in prod mode from the root compose file
+alone ([Switch modes](../../README.md#switch-modes)):
 
-# After a code change: rebuild the image and restart
-docker compose up -d --build --wait accounts
+```bash
+# From the repo root. 🛠️ Dev: mounted source, an edit reloads on the next request (`mix setup` first)
+docker compose -f docker-compose.yml -f .devcontainer/compose.yaml up -d --wait
+# 🚀 Prod: a release image built by Dockerfile, for the e2e stories and load tests (`bin/setup` first)
+docker compose up -d --build --wait
+docker compose logs -f accounts
 ```
 
-The container runs the service in production mode: [`Dockerfile`](Dockerfile) builds a `mix
-release` (no Elixir or source code in the final image), and `Accounts.Release`
-([`lib/accounts/release.ex`](lib/accounts/release.ex)) does what Mix would. It starts after the
-ledger is healthy, since the ledger declares the queue this service sends commands to. It uses
-the `accounts_prod` and `accounts_eventstore_prod` databases.
+In prod, [`Dockerfile`](Dockerfile) builds a `mix release` (no Elixir or source code in the
+final image), and `Accounts.Release` ([`lib/accounts/release.ex`](lib/accounts/release.ex)) does
+what `mix setup` does in dev, on the `*_prod` databases. It starts after the ledger is healthy,
+since the ledger declares the queue this service sends commands to.
 
 For `mix test`, `mix quality` and an `iex` shell, open the repo in the dev container (VS Code:
 **Reopen in Container**) and run them from `apps/accounts`. Postgres and RabbitMQ are reached

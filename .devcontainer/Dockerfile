@@ -1,6 +1,6 @@
 # Development image for the accounts, ledger and e2e apps: the toolchain only, no source.
-# The repo is mounted at /workspace (see compose.yaml next to this file). The services run from
-# their own release images (apps/<service>/Dockerfile).
+# The repo is mounted at /workspace (see compose.yaml next to this file), for the workspace and
+# the dev-mode services. The prod images are apps/<service>/Dockerfile.
 FROM elixir:1.18.4-otp-27
 
 # - inotify-tools: file_system's watcher on Linux

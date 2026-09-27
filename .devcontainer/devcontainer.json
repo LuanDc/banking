@@ -1,13 +1,14 @@
 {
   "name": "banking",
-  // The whole stack from the root docker-compose.yml (Postgres, RabbitMQ, Swagger UI, and the
-  // ledger and accounts release images), plus the workspace container from compose.yaml, which the editor attaches to.
+  // The whole stack from the root docker-compose.yml (Postgres, RabbitMQ, Swagger UI, ledger,
+  // accounts), with compose.yaml turning the two services into dev mode and adding the
+  // workspace container, which the editor attaches to.
   "dockerComposeFile": ["../docker-compose.yml", "compose.yaml"],
   "service": "workspace",
   "workspaceFolder": "/workspace",
   "shutdownAction": "stopCompose",
-  // The running services are release images, so the workspace fetches every app's deps.
-  "postCreateCommand": "for app in accounts ledger e2e; do (cd apps/$app && mix deps.get) || exit 1; done",
+  // The services fetch their own deps (`mix setup`); only the e2e app is left.
+  "postCreateCommand": "cd apps/e2e && mix deps.get",
   "customizations": {
     "vscode": {
       "extensions": [

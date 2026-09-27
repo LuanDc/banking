@@ -108,10 +108,10 @@ transfers, compensation, closing, and redelivered messages. Each one checks that
 1. Clone the repo and open the folder in VS Code.
 2. When VS Code offers **Reopen in Container**, click it. You can also run it from the command
    palette (`F1` → *Dev Containers: Reopen in Container*).
-3. Wait for the first build. It builds the dev image and both services' release images, and
-   fetches the deps in the workspace, so it takes a few minutes. Later starts take seconds.
+3. Wait for the first build. It builds the dev image and compiles both services, so it takes a
+   few minutes. Later starts take seconds.
 4. Once the window reopens, the terminal is inside the `workspace` container, in `/workspace`,
-   and both services are already running.
+   and both services are already running in dev mode.
 
 Check that everything is up:
 
@@ -163,15 +163,25 @@ flowchart LR
     class PG,MQ infra
 ```
 
-- 🚀 **Both services run in production mode**: each image is a `mix release` built by
-  `apps/<service>/Dockerfile`, with no Elixir or source code inside. A code change needs a
-  rebuild: `docker compose up -d --build --wait`.
-- **ledger** starts first. Its `bin/setup`, the release's `mix setup`, creates the `*_prod`
-  databases and seeds the bank's `pix-settlement` account, and the ledger declares the RabbitMQ
-  queue that accounts sends commands to.
+The two services run in one of two modes, on the same ports and the same Postgres and RabbitMQ:
+
+| | 🛠️ Dev | 🚀 Prod |
+| --- | --- | --- |
+| For | everyday development | the e2e stories and load tests |
+| Started by | the dev container, or both compose files | `docker compose up -d --build --wait` (root file only) |
+| Runs | `mix phx.server` from the mounted source, with the dev image | a `mix release` built by `apps/<service>/Dockerfile` |
+| A code change | reloads on the next request | needs `--build` |
+| Setup on start | `mix setup` | `bin/setup` (`<App>.Release.setup/0`, the same steps) |
+| Databases | `*_dev` | `*_prod` |
+
+- 🔀 **One mode at a time.** Both share the project name, so starting either recreates `ledger`
+  and `accounts` in its mode. The workspace keeps running in both.
+- **ledger** starts first. Its setup creates the databases and seeds the bank's
+  `pix-settlement` account, and the ledger declares the RabbitMQ queue that accounts sends
+  commands to.
 - **accounts** starts once the ledger is healthy.
-- The workspace keeps each app's `deps`, `_build` and dialyzer PLTs in Docker volumes, so they
-  never mix with a build on your machine.
+- Each app keeps its `deps`, `_build` and dialyzer PLTs in Docker volumes, so they never mix
+  with a build on your machine.
 
 The same ports are published on your machine:
 
@@ -192,10 +202,10 @@ at the other containers, so the usual commands just work:
 | --- | --- |
 | 🧪 Run a service's tests | `cd apps/accounts && mix test` (or `apps/ledger`) |
 | 🔍 Run the quality checks | `mix quality` in the service's folder |
-| 🎬 Run the e2e stories | `cd apps/e2e && mix test` |
+| 🎬 Run the e2e stories | `cd apps/e2e && mix test` (against whichever mode is up) |
 | 📮 Replay the Postman collection | `newman run apps/e2e/postman/banking.postman_collection.json -e apps/e2e/postman/devcontainer.postman_environment.json` |
 | 📐 Lint an OpenAPI spec | `npx @redocly/cli@1 lint apps/accounts/priv/openapi.yaml` |
-| 🐘 Open a SQL shell | `psql -U postgres -d accounts_prod` (password `postgres`); the services use the `*_prod` databases |
+| 🐘 Open a SQL shell | `psql -U postgres -d accounts_dev` (password `postgres`; `accounts_prod` in prod mode) |
 
 The services' logs don't go to this terminal. Follow them from your machine with
 `docker compose logs -f accounts ledger`.
@@ -212,18 +222,28 @@ docker compose -f docker-compose.yml -f .devcontainer/compose.yaml up -d --wait
 docker compose -f docker-compose.yml -f .devcontainer/compose.yaml exec workspace bash
 ```
 
-To run only the services and use them from your machine, `docker compose up -d --wait` is
-enough.
+### Switch modes
+
+From your machine, in the repo root. The workspace, and VS Code attached to it, keep running:
+
+```bash
+# 🚀 Prod: rebuild the release images from the current code, then recreate the services
+docker compose up -d --build --wait ledger accounts
+
+# 🛠️ Back to dev
+docker compose -f docker-compose.yml -f .devcontainer/compose.yaml up -d --wait ledger accounts
+```
+
+To run only the prod stack, with no workspace, `docker compose up -d --build --wait` is enough.
 
 ### Stop, reset, troubleshoot
 
 | Situation | Do |
 | --- | --- |
 | ⏸️ Stop everything, keep the data | `docker compose down` (VS Code also stops it when you close the window) |
-| 🔁 Changed a service's code | `docker compose up -d --build --wait` rebuilds its image |
-| 🧹 Start from scratch: data | `docker compose down -v` |
-| 🧹 …plus the workspace's deps and builds | `docker compose -f docker-compose.yml -f .devcontainer/compose.yaml down -v` |
-| 🐢 `--wait` or VS Code seems stuck on the first run | it is building the images: `docker compose build` shows the progress |
+| 🔁 Changed a service's code, in prod mode | `docker compose up -d --build --wait` rebuilds its image |
+| 🧹 Start from scratch: data, deps and builds | `docker compose -f docker-compose.yml -f .devcontainer/compose.yaml down -v` |
+| 🐢 `--wait` or VS Code seems stuck on the first run | it is compiling: `docker compose logs -f ledger accounts` |
 | 🚫 A port is already in use (5432, 5672, 4000…) | stop whatever is using it on your machine, e.g. a local Postgres |
 | 🔁 Changed the Dockerfile or `devcontainer.json` | *Dev Containers: Rebuild Container* |
 
@@ -239,8 +259,8 @@ guide shows how to run just the infrastructure in Docker.
 │   ├── accounts/            # Account Management Context (Phoenix service)
 │   ├── ledger/              # Ledger Context (Phoenix service)
 │   └── e2e/                 # story tests across both running services
-├── .devcontainer/           # dev image and the workspace container for VS Code
-├── docker-compose.yml       # the whole stack: Postgres, RabbitMQ, Swagger UI, both services (releases)
+├── .devcontainer/           # dev image, dev-mode services and the workspace container for VS Code
+├── docker-compose.yml       # the whole stack: Postgres, RabbitMQ, Swagger UI, both services (prod)
 └── CLAUDE.md                # conventions for AI-assisted work on the repo
 ```
 

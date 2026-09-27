@@ -23,7 +23,7 @@ All docs are in English, written for developers who find the repo on GitHub.
 - Develop test-first, one red → green per behavior, following the `baby-steps-tdd` skill.
 - Before every commit, run `mix test` and `mix quality` in each service you changed.
 - `apps/e2e` holds the story tests across both running services (D15). Run its `mix test`
-  (the stack must be up) before committing a change to a message, a saga step or an endpoint,
+  against the prod stack (`docker compose up -d --build --wait`, see Local setup) before committing a change to a message, a saga step or an endpoint,
   and add a story when a new flow crosses a boundary. Edge cases stay in the services' unit tests.
 - **The Postman collection mirrors the e2e stories** (`apps/e2e/postman/`: the collection plus
   a `local` environment).
@@ -80,23 +80,26 @@ All docs are in English, written for developers who find the repo on GitHub.
 
 ## Local setup
 
-Only Docker is required. `docker compose up -d --wait` starts Postgres, RabbitMQ (management UI
-on :15672, user and password `banking`), Swagger UI (:8080) and both services in prod mode:
-ledger on :4001, then accounts on :4000.
+Only Docker is required. Postgres, RabbitMQ (management UI on :15672, user and password
+`banking`), Swagger UI (:8080) and both services (ledger on :4001, then accounts on :4000) run in
+one of two modes. Both share the project name, so starting one recreates the services in it.
 
-- Each service's image is a `mix release` built by `apps/<service>/Dockerfile`. After a code
-  change, `docker compose up -d --build --wait` rebuilds it before the e2e stories run.
-- `bin/setup` (`<App>.Release.setup/0`, the release's `mix setup`) runs on every start and
-  creates the `*_prod` databases. A new setup step goes in both the `mix setup` alias and the
-  `Release` module.
-- `config/prod.exs` has no `force_ssl`: the stack serves plain HTTP.
-
-- `.devcontainer/` adds a `workspace` container (VS Code's **Reopen in Container**, or
-  `docker compose -f docker-compose.yml -f .devcontainer/compose.yaml exec workspace bash`) for
-  `mix test`, `mix quality`, the e2e stories and Newman, with the dev image
-  (`.devcontainer/Dockerfile`). Each app's `deps` and `_build` live in its named volumes, never
-  in the host's directories. Inside it, use the `devcontainer` Postman environment instead of
-  `local`.
+- **Dev**: the dev container (VS Code's **Reopen in Container**, or
+  `docker compose -f docker-compose.yml -f .devcontainer/compose.yaml up -d --wait`).
+  `.devcontainer/compose.yaml` turns the services into `mix phx.server` from the mounted source
+  with the dev image (`.devcontainer/Dockerfile`). Each runs `mix setup` on start, on the
+  `*_dev` databases. It adds the `workspace` container
+  (`docker compose -f docker-compose.yml -f .devcontainer/compose.yaml exec workspace bash`) for
+  `mix test`, `mix quality`, the e2e stories and Newman. Each app's `deps` and `_build` live in
+  named volumes, never in the host's directories. Inside the workspace, use the `devcontainer`
+  Postman environment instead of `local`.
+- **Prod**: the root `docker-compose.yml` alone, `docker compose up -d --build --wait`, for the
+  e2e stories and load tests. Each service's image is a `mix release` built by
+  `apps/<service>/Dockerfile`; `--build` picks up code changes. The workspace keeps running.
+  - `bin/setup` (`<App>.Release.setup/0`, the release's `mix setup`) runs on every start and
+    creates the `*_prod` databases. A new setup step goes in both the `mix setup` alias and the
+    `Release` module.
+  - `config/prod.exs` has no `force_ssl`: the stack serves plain HTTP.
 - The dev and test configs read `PGHOST`, `RABBITMQ_URL` and (dev) `PHX_IP`; the defaults are
   the host's `localhost`, so running a service on the host still works: start only
   `postgres rabbitmq swagger-ui`, and stop the Docker service on the same port first.
