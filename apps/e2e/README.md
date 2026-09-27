@@ -224,8 +224,22 @@ ACCOUNTS_URL=http://staging:4000 LEDGER_URL=http://staging:4001 \
    `apps/e2e/load-results/` (ignored by git).
 
 The script sets no limits. To measure the local stack in a small cloud footprint, start it with
-[`docker-compose.load.yml`](../../docker-compose.load.yml) first (see the
-[root README](../../README.md#limit-resources-for-a-load-test)).
+[`docker-compose.load.yml`](../../docker-compose.load.yml) first:
+
+```bash
+# 📉 Base: ledger and accounts at 1 CPU · 512 MiB
+docker compose -f docker-compose.yml -f docker-compose.load.yml up -d --build --wait ledger accounts
+
+# 📈 Scaled: ledger and accounts at 2 CPUs · 768 MiB
+BEAM_CPUS=2.0 BEAM_MEMORY=768m \
+  docker compose -f docker-compose.yml -f docker-compose.load.yml up -d --build --wait ledger accounts
+
+# ↩️ Take the limits off
+docker compose up -d --wait
+```
+
+Postgres (1 CPU · 1 GiB) and RabbitMQ (1 CPU · 512 MiB) get their limits in both scenarios. The
+[root README](../../README.md#limit-resources-for-a-load-test) explains how they were picked.
 
 The task also runs on its own: `cd apps/e2e && mix e2e.load`.
 
