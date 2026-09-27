@@ -12,7 +12,7 @@ defmodule E2E.MixProject do
       aliases: aliases(),
       dialyzer: [
         plt_local_path: "_build/plts",
-        plt_add_apps: [:ex_unit]
+        plt_add_apps: [:ex_unit, :mix]
       ]
     ]
   end

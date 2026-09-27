@@ -1,2 +1,5 @@
 # Claude Code: per-developer permissions, never shared.
 .claude/settings.local.json
+
+# Load test reports (scripts/load.sh, mix e2e.load --out).
+apps/e2e/load-results/

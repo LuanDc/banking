@@ -22,5 +22,9 @@ defmodule E2E.Ledger do
 
   defp get(path), do: Req.get!(client(), url: path)
 
-  defp client, do: Req.new(base_url: Application.fetch_env!(:e2e, :ledger_url), retry: false)
+  defp client do
+    [base_url: Application.fetch_env!(:e2e, :ledger_url), retry: false]
+    |> Keyword.merge(Application.get_env(:e2e, :req_options, []))
+    |> Req.new()
+  end
 end

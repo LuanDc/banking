@@ -1,9 +1,12 @@
-# 🎬 e2e · Story tests across both services
+# 🎬 e2e · Story tests and load tests across both services
 
 Unit tests prove each rule, but they can't prove the whole story. Here the story is a deposit
 crossing RabbitMQ twice, a saga compensating, and both books agreeing at the end. This suite
 drives the **running** services from the outside, the way a client would, and checks where the
 system ends up (D15).
+
+The same steps also drive a **load test**: many customers at once, at a fixed rate, with the
+same check at the end that both books agree (D16).
 
 [← Back to the project](../../README.md) · [📐 Design doc](../../docs/event_storming.md#d15--story-tests-drive-the-running-services-from-outside)
 
@@ -12,9 +15,11 @@ system ends up (D15).
 | 🧰 Stack | ExUnit · [Req](https://github.com/wojtekmach/req) (HTTP) · [AMQP](https://github.com/pma/amqp) (replaying messages) |
 | 🔌 Talks to | the Accounts and Ledger HTTP APIs and RabbitMQ. It shares no code with either service |
 | ⏱️ Runtime | a few seconds; the stories run concurrently |
+| 📈 Load test | `mix e2e.load`, on the same clients and steps: [Load test](#load-test) |
 
 **Contents:** [How a story works](#how-a-story-works) · [Run it](#run-it) · [Stories](#stories) ·
-[Replay them in Postman](#replay-them-in-postman) · [Writing a story](#writing-a-story)
+[Replay them in Postman](#replay-them-in-postman) · [Writing a story](#writing-a-story) ·
+[Load test](#load-test)
 
 ---
 
@@ -53,30 +58,43 @@ sequenceDiagram
 
 ## Run it
 
-> 🐳 Needs the whole stack running, in either mode. Prod, the one meant for it:
-> `docker compose up -d --build --wait` from the repo root. The dev container runs it in dev mode.
+> 🐳 Needs the whole stack running. The script starts it for you.
 
-**In the dev container** (VS Code: **Reopen in Container**), where `ACCOUNTS_URL`, `LEDGER_URL`
-and `RABBITMQ_URL` already point at the services:
+**One command, from the repo root** (on the host, only Docker is needed):
+
+```bash
+scripts/e2e.sh                                  # prod stack, then mix test, then Newman
+scripts/e2e.sh test/stories/transfer_test.exs   # extra arguments go to mix test
+scripts/e2e.sh --dev                            # against the dev-mode services
+scripts/e2e.sh --skip-newman
+```
+
+| Step | What the script does |
+| --- | --- |
+| 🚀 Stack | `docker compose up -d --build --wait`: the prod releases, rebuilt from the current code. It also takes off any load limits |
+| 🧰 Runner | starts the dev container's `workspace` if it isn't running (`--no-deps`), and runs everything there |
+| ⏳ Wait | until both services answer |
+| 🎬 Stories | `mix test` in `apps/e2e` |
+| 📮 Mirror | Newman on the Postman collection |
+
+Inside the dev container there is no Docker, so the script skips the first step and runs against
+whichever mode is up.
+
+**By hand**, against a stack that is already up. In the dev container, `ACCOUNTS_URL`,
+`LEDGER_URL` and `RABBITMQ_URL` already point at the services:
 
 ```bash
 cd apps/e2e
 mix test
 ```
 
-**On the host**, with your own Elixir, against the published ports (the defaults):
-
-```bash
-cd apps/e2e
-mix deps.get
-mix test
-```
-
-The services can also run on the host instead of in Docker (see each service's
+On the host, with your own Elixir, the defaults point at the published ports. The services can
+also run on the host instead of in Docker (see each service's
 [run in dev](../accounts/README.md#run-in-dev)). The suite doesn't care where they run.
 
 If a service is down, `test_helper.exs` stops right away and tells you what to start.
-Point the suite elsewhere with `ACCOUNTS_URL`, `LEDGER_URL` and `RABBITMQ_URL`.
+Point the suite elsewhere with `ACCOUNTS_URL`, `LEDGER_URL` and `RABBITMQ_URL`. The RabbitMQ
+management API defaults to the broker's host on port 15672; `RABBITMQ_MANAGEMENT_URL` overrides it.
 
 ## Stories
 
@@ -159,3 +177,109 @@ end
 - Wrap every read that follows a command in `eventually`.
 - Mirror it in [`postman/`](postman/) in the same commit: a folder with the test's name and the
   same steps. Then run both `mix test` and Newman.
+
+## Load test
+
+The stories prove that each flow ends in the right place. The load test asks whether it still
+does with many customers at once, and how long it takes. It is written with the stories' own
+parts: the same HTTP clients, the same steps (`E2E.Flows`), and the same final check that both
+books agree.
+
+```mermaid
+flowchart LR
+    S["🧰 Setup<br/>funded_account × N<br/>not measured"] --> L["📈 Load<br/>fixed rate, open model<br/>accept + settle times"]
+    L --> D["⏳ Drain<br/>queues empty, late<br/>outcomes read back"]
+    D --> C["⚖️ Check<br/>both books = expected<br/>trial balance · dead letters"]
+
+    classDef step fill:#FFE082,stroke:#C8A300,color:#14202B
+    class S,L,D,C step
+```
+
+### Run a load test
+
+From the repo root, on the host (it needs Docker to set the limits):
+
+```bash
+scripts/load.sh                                          # 📉 base: 1 CPU · 512 MiB per service
+scripts/load.sh --scaled                                 # 📈 scaled: 2 CPUs · 768 MiB
+scripts/load.sh --rate 100 --duration 120 --accounts 50  # extra arguments go to mix e2e.load
+scripts/load.sh --scaled --mix transfer=100
+```
+
+1. 🚀 Rebuilds the release images and recreates `ledger`, `accounts`, Postgres and RabbitMQ with
+   the limits of [`docker-compose.load.yml`](../../docker-compose.load.yml), then prints them.
+2. 🧰 Runs the generator in the `workspace` container, outside the limits.
+3. 📊 Prints the report, then the CPU periods each container was throttled during the run and
+   its memory at the end. The JSON report goes to `apps/e2e/load-results/` (ignored by git).
+4. ↩️ The limits stay on. `docker compose up -d --wait` takes them off, and so does
+   `scripts/e2e.sh`.
+
+Against a stack that is already up, the task runs on its own: `cd apps/e2e && mix e2e.load`.
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--rate` | 20 | operations started per second |
+| `--duration` | 30 | seconds of load |
+| `--accounts` | 20 | funded accounts in the pool; transfers go between random pairs |
+| `--balance` | 1000000 | cents each pool account starts with, so transfers aren't refused |
+| `--mix` | `transfer=80,deposit=15,read=5` | the weights of each operation |
+| `--poll` | 100 | ms between two reads while waiting for an outcome |
+| `--settle-timeout` | 30 | seconds an operation waits for its outcome during the load |
+| `--drain-timeout` | 120 | seconds the check waits for late outcomes and balances |
+| `--max-in-flight` | 2000 | operations at once; past it, a start is dropped and counted |
+| `--pool-size` | 200 | HTTP connections per service |
+| `--out` | · | also write the report as JSON |
+
+### What it measures
+
+- ⏱️ **Open model.** Operations start on the clock, whatever the answers. A slow system gets a
+  growing queue, not a gentler load, as with real customers. `generator lag` shows how late the
+  starts were: if it grows, the generator is the bottleneck.
+- ⚡ **accept**: from the request to its answer (`202` for a transfer or a deposit).
+- 🔁 **settle**: from the request until the outcome shows in the read model. A transfer crosses
+  RabbitMQ twice, and each consumer takes one message at a time (D10), so a backlog shows here
+  first while `accept` stays low.
+- 🐇 **Max backlog**: the deepest each queue got, sampled every second from the management
+  API, which refreshes its counts every few seconds.
+- 🧮 The reads that wait for an outcome are part of the load, as they would be for any client.
+
+### What it checks
+
+At the end, the run fails unless every one of these holds:
+
+| Check | How |
+| --- | --- |
+| ⚖️ Both books match the expected balance of every pool account | expected = initial + posted deposits ± completed transfers (`E2E.Load.Books`), then `assert_balance/2` in `eventually` |
+| 📒 The trial balance holds | `GET /api/trial-balance` |
+| 📭 No message was dead-lettered | the `*.dead` queues, before and after |
+| ❓ Every outcome is known | what timed out is read again once the queues are empty |
+
+A client-side error (a timeout, an exhausted pool) may still have reached the service. Its
+`Idempotency-Key` is looked up once the queues are empty, as a real client would. The report
+shows how many `reached the service anyway`. An exhausted client pool is the generator's limit,
+not the services': raise `--pool-size` or `--poll`.
+
+### Reading a report
+
+```text
+📈 Load: 200/s for 15s · 20 accounts · mix transfer=80 deposit=15 read=5
+   sent 3000 · dropped 0 · took 26.6s · generator lag p99 3 ms
+
+operation  count  outcomes                 accept ms          settle ms            settled/s
+                                           p50 / p99 / max    p50 / p99 / max
+transfer   2400   completed 2400           2894 / 5703 / 5843 11476 / 13303 / 13492 160.0
+...
+🐇 Max backlog: ledger.commands: 623 · accounts.ledger-events: 1 · ...
+
+✅ Both books agree on all 20 accounts · trial balance balanced · dead letters: 0 · unresolved: 0
+```
+
+Here `ledger.commands` backs up and `settle` climbs to seconds while the Ledger works through
+the queue: its single consumer (D10) is the ceiling. Compare `--scaled`: if throughput
+doesn't follow the CPUs, the limit is elsewhere, likely Postgres, which both event stores write
+to.
+
+- 🔥 Every deposit debits the bank's single `pix-settlement` account (D13). Run
+  `--mix deposit=100` to measure that hot spot on its own.
+- 🧪 `test/load/` holds the unit tests of the pure parts, plus a one-second smoke run in the
+  suite, so `mix test` keeps the runner working.

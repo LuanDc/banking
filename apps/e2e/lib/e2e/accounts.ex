@@ -46,12 +46,18 @@ defmodule E2E.Accounts do
   @spec reservations(String.t()) :: response
   def reservations(account_id), do: get("/api/accounts/#{account_id}/reservations")
 
-  @spec credits(String.t()) :: response
-  def credits(account_id), do: get("/api/accounts/#{account_id}/credits")
+  @spec credits(String.t(), keyword()) :: response
+  def credits(account_id, params \\ []),
+    do: get("/api/accounts/#{account_id}/credits", params: params)
 
-  defp get(path), do: Req.get!(client(), url: path)
+  defp get(path, opts \\ []), do: Req.get!(client(), [url: path] ++ opts)
 
   defp post(path, opts), do: Req.post!(client(), [url: path] ++ opts)
 
-  defp client, do: Req.new(base_url: Application.fetch_env!(:e2e, :accounts_url), retry: false)
+  # `:req_options` lets the load test give the clients a bigger connection pool.
+  defp client do
+    [base_url: Application.fetch_env!(:e2e, :accounts_url), retry: false]
+    |> Keyword.merge(Application.get_env(:e2e, :req_options, []))
+    |> Req.new()
+  end
 end

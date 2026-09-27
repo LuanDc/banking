@@ -839,3 +839,29 @@ transfer completed or compensated, and both books agreeing (D2). `apps/e2e` cove
 Rejected: Playwright. Its API client and polling assertions would fit, but it brings Node into an
 Elixir reference repo, and its browser, the reason to choose it, has no UI to drive here. It is
 worth reconsidering if a UI arrives.
+
+### D16 · The load test reuses the stories' steps
+
+A load test asks whether the stories still end where they should with many customers at once,
+and how long they take. It lives in `apps/e2e` next to the stories and is told with their parts:
+the same HTTP clients, the same steps (`E2E.Flows`: open, fund, wait for a transfer, check both
+books), and the same RabbitMQ contract. `mix e2e.load` runs it; `scripts/load.sh` starts the prod
+stack with the limits of `docker-compose.load.yml` first.
+
+- **An open model.** Operations start on the clock at a fixed rate, whatever the answers, as
+  customers do. The saga is asynchronous (the `202` comes before the booking), so a closed loop
+  that waits for each outcome would slow down with the system and hide the backlog.
+- **Two times per operation.** *Accept* is the request until its answer. *Settle* is the request
+  until the outcome shows in the read model (D11). The single consumer on each queue (D10) shows
+  up in *settle* and in the queue depth long before it shows in *accept*.
+- **Correctness under load is the verdict.** The run fails unless every account ends with the
+  balance its outcomes add up to, in both books (D2), the trial balance holds and no message was
+  dead-lettered. Latency is reported, not asserted: it depends on the machine.
+- **Ambiguous outcomes are settled by the key.** A request that failed on the client side may
+  have reached the service. Once the queues are empty, the check looks its `Idempotency-Key` up
+  (D4), as a real client would, instead of guessing.
+
+Rejected: running the stories in a loop. ExUnit picks the concurrency, reports pass or fail
+without latencies, and the stories are edge cases chosen to prove rules, not a realistic mix.
+Rejected: k6. It brings metrics and thresholds for free, but the flows and the two-book check
+would be rewritten in JavaScript, next to the Elixir ones they must agree with.
