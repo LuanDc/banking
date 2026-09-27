@@ -58,6 +58,7 @@ place at the **cheapest layer that can prove the behavior** — and at that laye
 | **Pure unit** — plain `ExUnit.Case, async: true` | none: no database, no app boot | Aggregates (`execute/2`, `apply/2` as pure functions), value objects, changesets, calculations, policy decisions. **Every edge case lives here**: boundaries, rounding, invalid input, each rejection reason, each state of an FSM. |
 | **Data layer** — `Ledger.DataCase` | Postgres + Ecto sandbox | Only what genuinely needs the database: queries, unique and check constraints, migrations, projection writes. One test per behavior, not per variation. |
 | **Integration / Phoenix** — `Ledger.ConnCase`, event store, Commanded end-to-end | endpoint, router, plugs, serialization, a real event store with no sandbox | **Smoke tests only.** One happy path per route or per wiring: the pieces are connected, the request reaches the context, the response has the right status and shape. |
+| **Story** — `apps/e2e`, `E2E.StoryCase` | both services running, Postgres, RabbitMQ | **One story per flow that crosses a boundary**: a deposit, a transfer, a compensation, a redelivered message. It asserts where the system ends up, in both books, through `eventually`. It lives outside the services and runs before a commit that touches a message, a saga step or an endpoint (D15). |
 
 The reasoning is about what each layer can prove. A pure test proves a rule; a controller test proves
 plumbing. Asserting a rule through the controller pays the full cost of the stack to learn something

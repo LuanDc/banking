@@ -61,7 +61,7 @@ Start here to understand *why* the code looks the way it does.
 | See how the two contexts relate | [6 · Context Map](docs/event_storming.md#6-context-map) |
 | Browse every command, event and policy | [7 · Inventory](docs/event_storming.md#7-inventory-of-commands-events-and-aggregates) |
 | See the open questions and how each was settled | [8 · Hotspots](docs/event_storming.md#8-hotspots--open-decisions) |
-| Read the trade-offs (D1…D14) | [10 · Design decisions](docs/event_storming.md#10-design-decisions) |
+| Read the trade-offs (D1…D15) | [10 · Design decisions](docs/event_storming.md#10-design-decisions) |
 
 ### 🧩 The services
 
@@ -78,6 +78,17 @@ Each service has its own README with how it works inside.
 | Events | [15 events](apps/accounts/README.md#events) | [4 events](apps/ledger/README.md#events) |
 | Database tables | [Tables](apps/accounts/README.md#database-tables) | [Tables](apps/ledger/README.md#database-tables) |
 | Queues | [Queues](apps/accounts/README.md#queues) | [Queues](apps/ledger/README.md#queues) |
+
+### 🎬 The stories: [`apps/e2e`](apps/e2e/README.md)
+
+End-to-end tests that drive both running services through their APIs and RabbitMQ: deposits,
+transfers, compensation, closing, and redelivered messages. Each one checks that both books agree.
+
+| I want to… | Read |
+| --- | --- |
+| See how a story test works | [How a story works](apps/e2e/README.md#how-a-story-works) |
+| Run the suite | [Run it](apps/e2e/README.md#run-it) |
+| Browse what is covered | [Stories](apps/e2e/README.md#stories) |
 
 ## Quick start
 
@@ -101,10 +112,11 @@ Then start each service with `iex -S mix phx.server` in its own terminal. Each s
 
 ```
 .
-├── docs/event_storming.md   # the design: event storming, context map, decisions D1…D14
+├── docs/event_storming.md   # the design: event storming, context map, decisions D1…D15
 ├── apps/
 │   ├── accounts/            # Account Management Context (Phoenix service)
-│   └── ledger/              # Ledger Context (Phoenix service)
+│   ├── ledger/              # Ledger Context (Phoenix service)
+│   └── e2e/                 # story tests across both running services
 ├── docker-compose.yml       # Postgres, RabbitMQ, Swagger UI
 └── CLAUDE.md                # conventions for AI-assisted work on the repo
 ```

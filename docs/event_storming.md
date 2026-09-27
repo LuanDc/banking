@@ -812,3 +812,30 @@ validates :to_account_id, presence: true, by: [function: &Accounts.Command.other
 - **The Ledger keeps its checks in `TransactionBatch`.** An empty batch or an invalid amount
   has to become `LedgerBatchRejected`, so the sender hears back and compensates. A dispatch
   error would dead-letter the message and leave the reservation open (D6).
+
+### D15 · Story tests drive the running services from outside
+
+Each service's suite proves its rules and its own wiring, with the other service and RabbitMQ
+replaced by mocks. Nothing there proves that the two sides agree on the message contract or on
+the RabbitMQ topology, or that a story ends where it should once the messages cross: a
+transfer completed or compensated, and both books agreeing (D2). `apps/e2e` covers that.
+
+- **A separate Mix project, sharing no code with the services** (D3). It uses only their HTTP
+  APIs and the RabbitMQ contract, as any client would, and never reads their databases.
+- **Stories, not edge cases.** Each test tells a story that crosses at least one boundary: a
+  deposit, a transfer, a compensation, a close, or a redelivered message. Rules stay in the
+  services' unit tests (the `baby-steps-tdd` layers), so the suite stays small and runs in
+  seconds.
+- **Assertions state where the system ends up.** Reads come from read models (D11), so every
+  read after a command goes through `eventually`, which retries until a deadline. Both books are
+  checked together: the available balance in Accounts and the ledger balance.
+- **Redelivery is tested for real.** A story publishes a copy of a message that was already
+  handled, straight to RabbitMQ, then checks that no money moved (D4). Both consumers handle
+  one message at a time (D10), so a small deposit sent after the copy, once it lands, proves the
+  copy was handled.
+- It runs against the dev stack, not in each service's `mix test`, so it never slows the
+  red-green loop. Run it before a commit that changes a message, a saga step or an endpoint.
+
+Rejected: Playwright. Its API client and polling assertions would fit, but it brings Node into an
+Elixir reference repo, and its browser, the reason to choose it, has no UI to drive here. It is
+worth reconsidering if a UI arrives.
