@@ -12,7 +12,7 @@ defmodule Ledger.MixProject do
       deps: deps(),
       test_coverage: [tool: ExCoveralls],
       dialyzer: [
-        plt_file: {:no_warn, "priv/plts/project.plt"},
+        plt_file: {:no_warn, "_build/plts/project.plt"},
         ignore_warnings: ".dialyzer_ignore.exs",
         plt_add_apps: [:mix, :ex_unit]
       ]

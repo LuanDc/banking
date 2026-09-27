@@ -1,7 +1,7 @@
 # Added on top of the root docker-compose.yml by devcontainer.json: the container the editor
 # attaches to. It shares each app's deps and _build volumes with the running services, and
 # reaches them, Postgres and RabbitMQ by their service names. The dialyzer PLTs (`mix quality`)
-# get volumes too: a PLT built by the host's OTP is rejected here, and the other way round.
+# live under _build, so the container's never clash with the host's.
 #
 # Without VS Code, the same container runs with Docker alone:
 #
@@ -27,10 +27,8 @@ services:
       - .:/workspace
       - accounts-deps:/workspace/apps/accounts/deps
       - accounts-build:/workspace/apps/accounts/_build
-      - accounts-plts:/workspace/apps/accounts/priv/plts
       - ledger-deps:/workspace/apps/ledger/deps
       - ledger-build:/workspace/apps/ledger/_build
-      - ledger-plts:/workspace/apps/ledger/priv/plts
       - e2e-deps:/workspace/apps/e2e/deps
       - e2e-build:/workspace/apps/e2e/_build
     depends_on:
@@ -38,7 +36,5 @@ services:
       - rabbitmq
 
 volumes:
-  accounts-plts:
-  ledger-plts:
   e2e-deps:
   e2e-build:

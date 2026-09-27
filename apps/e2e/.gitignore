@@ -6,7 +6,3 @@
 
 # If the VM crashes, it generates a dump, let's ignore it too.
 erl_crash.dump
-
-# Dialyzer PLTs
-/priv/plts/*.plt
-/priv/plts/*.plt.hash

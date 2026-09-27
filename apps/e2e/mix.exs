@@ -11,7 +11,7 @@ defmodule E2E.MixProject do
       deps: deps(),
       aliases: aliases(),
       dialyzer: [
-        plt_local_path: "priv/plts",
+        plt_local_path: "_build/plts",
         plt_add_apps: [:ex_unit]
       ]
     ]

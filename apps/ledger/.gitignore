@@ -24,8 +24,3 @@ erl_crash.dump
 
 # Ignore package tarball (built via "mix hex.build").
 ledger-*.tar
-
-
-# Dialyzer PLTs
-/priv/plts/*.plt
-/priv/plts/*.plt.hash
